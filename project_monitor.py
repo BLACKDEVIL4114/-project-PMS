@@ -6678,62 +6678,76 @@ class ProjectMonitorApp:
             prio_filter = self.task_prio_filter.get() if hasattr(self, 'task_prio_filter') else "All"
             member_filter = self.task_member_filter.get() if hasattr(self, 'task_member_filter') else "All"
             
-            con = sqlite3.connect(get_db_path())
-            cur = con.cursor()
-            
-            query = """
-                SELECT t.id, t.title, p.name, t.assigned_to, t.priority, t.status, t.due_date, t.created_date 
-                FROM tasks t 
-                LEFT JOIN projects p ON t.project_id = p.id
-                WHERE 1=1
-            """
-            params = []
-            
-            if CURRENT_USER_ROLE.lower() == 'team leader':
-                query += " AND (t.project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?) OR t.assigned_to = ?)"
-                params.extend([f"%{CURRENT_USER_NAME}%", CURRENT_USER_NAME])
-            
-            if status_filter != "All":
-                if status_filter == "Overdue":
-                    query += " AND t.status != 'Completed' AND t.due_date < date('now')"
-                else:
-                    query += " AND t.status=?"
-                    params.append(status_filter)
-                
-            if prio_filter != "All":
-                query += " AND t.priority=?"
-                params.append(prio_filter)
-                
-            if member_filter != "All":
-                query += " AND t.assigned_to=?"
-                params.append(member_filter)
-                
-            if search_txt:
-                query += " AND (lower(t.title) LIKE ? OR lower(p.name) LIKE ? OR lower(t.assigned_to) LIKE ?)"
-                p_val = f"%{search_txt}%"
-                params.extend([p_val, p_val, p_val])
-                
-            query += " ORDER BY t.id DESC"
-            
-            cur.execute(query, params)
-            rows = cur.fetchall()
-            con.close()
-            
-            today = datetime.now().date()
-            for row in rows:
-                vals = list(row)
-                s = str(vals[5])
-                prog = 100 if s == 'Completed' else 50 if s == 'In Progress' else 25 if s == 'Delayed' else 0
-                vals.insert(7, f"{prog}%")
-                tags = ()
+            def _bg_task_fetch():
                 try:
-                    if s != 'Completed' and vals[6]:
-                        d = datetime.strptime(vals[6], "%Y-%m-%d").date()
-                        if d < today: tags = ('overdue_row',)
-                except: pass
-                self.task_tree.insert("", END, values=vals, tags=tags)
+                    con = sqlite3.connect(get_db_path())
+                    cur = con.cursor()
+                    
+                    # Optimized query: Direct join filter for TLs
+                    query = """
+                        SELECT t.id, t.title, p.name, t.assigned_to, t.priority, t.status, t.due_date, t.created_date 
+                        FROM tasks t 
+                        LEFT JOIN projects p ON t.project_id = p.id
+                        WHERE 1=1
+                    """
+                    params = []
+                    
+                    if CURRENT_USER_ROLE.lower() == 'team leader':
+                        query += " AND (p.team_leader LIKE ? OR t.assigned_to = ?)"
+                        params.extend([f"%{CURRENT_USER_NAME}%", CURRENT_USER_NAME])
+                    
+                    if status_filter != "All":
+                        if status_filter == "Overdue":
+                            query += " AND t.status != 'Completed' AND t.due_date < date('now')"
+                        else:
+                            query += " AND t.status=?"
+                            params.append(status_filter)
+                        
+                    if prio_filter != "All":
+                        query += " AND t.priority=?"
+                        params.append(prio_filter)
+                        
+                    if member_filter != "All":
+                        query += " AND t.assigned_to=?"
+                        params.append(member_filter)
+                        
+                    if search_txt:
+                        query += " AND (lower(t.title) LIKE ? OR lower(p.name) LIKE ? OR lower(t.assigned_to) LIKE ?)"
+                        p_val = f"%{search_txt}%"
+                        params.extend([p_val, p_val, p_val])
+                        
+                    query += " ORDER BY t.id DESC LIMIT 300" # Safety limit for ultra-smoothness
+                    
+                    cur.execute(query, params)
+                    rows = cur.fetchall()
+                    con.close()
+                    
+                    if self.root.winfo_exists():
+                        self.root.after(0, lambda: self._render_tasks_batch(rows))
+                except Exception as e:
+                    debug_log(f"DEBUG: Error in bg task fetch: {e}")
+
+            threading.Thread(target=_bg_task_fetch, daemon=True).start()
         except Exception as e:
             debug_log(f"DEBUG: Error refreshing tasks: {e}")
+
+    def _render_tasks_batch(self, rows):
+        """Thread-safe UI update for Task Treeview."""
+        if not self.task_tree.winfo_exists(): return
+        
+        today = datetime.now().date()
+        for row in rows:
+            vals = list(row)
+            s = str(vals[5])
+            prog = 100 if s == 'Completed' else 50 if s == 'In Progress' else 25 if s == 'Delayed' else 0
+            vals.insert(7, f"{prog}%")
+            tags = ()
+            try:
+                if s != 'Completed' and vals[6]:
+                    d = datetime.strptime(vals[6], "%Y-%m-%d").date()
+                    if d < today: tags = ('overdue_row',)
+            except: pass
+            self.task_tree.insert("", END, values=vals, tags=tags)
 
     def bulk_update_task_status(self):
         selected = self.task_tree.selection()
