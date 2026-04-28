@@ -1412,8 +1412,8 @@ class ProjectMonitorApp:
             debug_log(f"[API Sync] Sync Error: {e}")
             return False
 
-    def refresh_current_page(self):
-        """Universal Hot-Reload: Performs API sync then refreshes the active dashboard view"""
+    def refresh_current_page(self, force_sync=True):
+        """Universal Hot-Reload: Performs optional API sync then refreshes the active dashboard view"""
         if not hasattr(self, 'current_page') or not self.current_page:
             return
 
@@ -1425,10 +1425,14 @@ class ProjectMonitorApp:
             self.root.update_idletasks()
 
         def _bg_sync_thread():
-            # Perform REST API -> SQLite Sync in background
-            sync_success = self.sync_data_from_api()
+            sync_success = True
+            if force_sync:
+                # Perform REST API -> SQLite Sync in background
+                sync_success = self.sync_data_from_api()
+            
             # Delegate UI updates back to the main thread securely
-            self.root.after(0, lambda: self._complete_hot_reload(sync_success, original_text))
+            if self.root.winfo_exists():
+                self.root.after(0, lambda: self._complete_hot_reload(sync_success, original_text))
 
         threading.Thread(target=_bg_sync_thread, daemon=True).start()
 
@@ -1777,8 +1781,8 @@ class ProjectMonitorApp:
         btn_cancel = Button(btn_side, text="Cancel", font=('Segoe UI', 10, 'bold'), bg=HEADER_BG, fg=WHITE, relief=FLAT, padx=16, pady=9, command=cancel_edit, highlightbackground=BORDER_COLOR, highlightthickness=1)
 
         # --- FOOTER BAR ---
-        footer = Frame(scrollable_frame, bg=CONTENT_BG, padx=30, pady=(8, 24))
-        footer.pack(fill=X)
+        footer = Frame(scrollable_frame, bg=CONTENT_BG, padx=30)
+        footer.pack(fill=X, pady=(8, 24))
         Label(footer, text="Profile changes apply immediately to your workspace record.", font=('Segoe UI', 9), bg=CONTENT_BG, fg="#707ea2").pack(side=LEFT)
         Button(footer, text="Close Profile", font=('Segoe UI', 10, 'bold'), bg=PRIMARY_RED, fg=WHITE, relief=FLAT, padx=20, pady=10, command=t.destroy).pack(side=RIGHT)
         
@@ -6530,7 +6534,8 @@ class ProjectMonitorApp:
 
     def _on_status_save_complete(self, modal_window):
         """Callback after task status is saved in background."""
-        self.refresh_current_page()
+        # Refresh UI without triggering a heavy full API sync
+        self.refresh_current_page(force_sync=False)
         messagebox.showinfo("Success", "Status Updated Successfully")
         try: modal_window.destroy()
         except: pass
