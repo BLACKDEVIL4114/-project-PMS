@@ -6533,21 +6533,12 @@ class ProjectMonitorApp:
             btn_update.config(state=DISABLED, text="Saving...")
             threading.Thread(target=_bg_save, daemon=True).start()
 
-    def _on_status_save_complete(self, modal_window):
-        """Callback after task status is saved in background."""
-        # Refresh UI without triggering a heavy full API sync
-        self.refresh_current_page(force_sync=False)
-        messagebox.showinfo("Success", "Status Updated Successfully")
-        try: modal_window.destroy()
-        except: pass
-                
         btn_update = Button(status_card, text="UPDATE STATUS", command=save_status, bg=PRIMARY_RED, fg=WHITE, 
                            font=('Segoe UI', 8, 'bold'), relief=FLAT, padx=20, pady=8, cursor="hand2")
         btn_update.pack(side=RIGHT)
         btn_update.bind("<Enter>", lambda e: btn_update.config(bg=PRIMARY_RED_DARK))
         btn_update.bind("<Leave>", lambda e: btn_update.config(bg=PRIMARY_RED))
-        
-        # ── MAIN CONTENT (TABS-LIKE FEEL) ──
+                # ── MAIN CONTENT (TABS-LIKE FEEL) ──
         main_scroll_c = Canvas(t, bg=CONTENT_BG, highlightthickness=0)
         main_scroll_f = Frame(main_scroll_c, bg=CONTENT_BG)
         main_sb = Scrollbar(t, orient=VERTICAL, command=main_scroll_c.yview)
@@ -6669,11 +6660,22 @@ class ProjectMonitorApp:
                 messagebox.showerror("Error", f"Could not open file: {e}")
 
         Button(att_btn_f, text="+ UPLOAD FILE", bg=ACCENT_PURPLE, fg=WHITE, font=('Segoe UI', 8, 'bold'), 
-               relief=FLAT, padx=15, pady=6, command=attach_file, cursor="hand2").pack(side=LEFT)
-        Button(att_btn_f, text="OPEN SELECTED", bg=HOVER_BG, fg=TEXT_SECONDARY, font=('Segoe UI', 8, 'bold'), 
-               relief=FLAT, padx=15, pady=6, command=open_selected, cursor="hand2").pack(side=LEFT, padx=10)
-        Button(t, text="CLOSE WINDOW", command=t.destroy, bg=HOVER_BG, fg=TEXT_SECONDARY, 
-               font=('Segoe UI', 9, 'bold'), relief=FLAT, padx=25, pady=10, cursor="hand2").pack(pady=20)
+               relief=FLAT, padx=15, pady=8, cursor="hand2", command=attach_file).pack(side=LEFT, padx=(0, 10))
+        Button(att_btn_f, text="OPEN FILE", bg=HEADER_BG, fg=WHITE, font=('Segoe UI', 8, 'bold'), 
+               relief=FLAT, padx=15, pady=8, cursor="hand2", command=open_selected,
+               highlightbackground=BORDER_COLOR, highlightthickness=1).pack(side=LEFT)
+
+        Button(main_scroll_f, text="CLOSE WINDOW", command=t.destroy, bg=HEADER_BG, fg=TEXT_WHITE, 
+               font=('Segoe UI', 9, 'bold'), relief=FLAT, padx=25, pady=10, cursor="hand2",
+               highlightbackground=BORDER_COLOR, highlightthickness=1).pack(pady=30)
+
+    def _on_status_save_complete(self, modal_window):
+        """Callback after task status is saved in background."""
+        # Refresh UI without triggering a heavy full API sync
+        self.refresh_current_page(force_sync=False)
+        messagebox.showinfo("Success", "Status Updated Successfully")
+        try: modal_window.destroy()
+        except: pass
 
     def refresh_tasks(self):
         try:
