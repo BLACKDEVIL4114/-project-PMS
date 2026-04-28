@@ -6500,9 +6500,13 @@ class ProjectMonitorApp:
         c_status = ttk.Combobox(status_card, values=statuses, state="readonly", width=18, style='Employee.TCombobox')
         c_status.set(current_status)
         c_status.pack(side=LEFT, padx=15)
-        
+
         def save_status():
             new_status = c_status.get()
+            
+            # 1. Close modal immediately for instant feel
+            try: t.destroy()
+            except: pass
             
             def _bg_save():
                 try:
@@ -6523,14 +6527,14 @@ class ProjectMonitorApp:
                     con.commit()
                     con.close()
                     
-                    # Refresh UI on main thread
+                    # 2. Refresh dashboard quietly in the background after DB is ready
                     if self.root.winfo_exists():
-                        self.root.after(0, lambda: self._on_status_save_complete(t))
+                        self.root.after(0, lambda: self.refresh_current_page(force_sync=False))
                 except Exception as e:
                     if self.root.winfo_exists():
                         self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
 
-            btn_update.config(state=DISABLED, text="Saving...")
+            # Run DB operations in background
             threading.Thread(target=_bg_save, daemon=True).start()
 
         btn_update = Button(status_card, text="UPDATE STATUS", command=save_status, bg=PRIMARY_RED, fg=WHITE, 
@@ -6538,16 +6542,21 @@ class ProjectMonitorApp:
         btn_update.pack(side=RIGHT)
         btn_update.bind("<Enter>", lambda e: btn_update.config(bg=PRIMARY_RED_DARK))
         btn_update.bind("<Leave>", lambda e: btn_update.config(bg=PRIMARY_RED))
-                # ── MAIN CONTENT (TABS-LIKE FEEL) ──
-        main_scroll_c = Canvas(t, bg=CONTENT_BG, highlightthickness=0)
+        
+        # ── MAIN CONTENT (SCROLLABLE AREA) ──
+        main_container = Frame(t, bg=CONTENT_BG)
+        main_container.pack(fill=BOTH, expand=True, padx=25, pady=(10, 0))
+
+        main_scroll_c = Canvas(main_container, bg=CONTENT_BG, highlightthickness=0)
         main_scroll_f = Frame(main_scroll_c, bg=CONTENT_BG)
-        main_sb = Scrollbar(t, orient=VERTICAL, command=main_scroll_c.yview)
+        main_sb = Scrollbar(main_container, orient=VERTICAL, command=main_scroll_c.yview)
         main_scroll_c.configure(yscrollcommand=main_sb.set)
         
-        main_scroll_c.pack(side=LEFT, fill=BOTH, expand=True, padx=(25, 0))
         main_sb.pack(side=RIGHT, fill=Y)
+        main_scroll_c.pack(side=LEFT, fill=BOTH, expand=True)
         
         main_window = main_scroll_c.create_window((0, 0), window=main_scroll_f, anchor="nw")
+        
         def _on_modal_resize(e):
             main_scroll_c.itemconfig(main_window, width=e.width)
             main_scroll_c.configure(scrollregion=main_scroll_c.bbox("all"))
@@ -6568,16 +6577,17 @@ class ProjectMonitorApp:
         
         def refresh_comments():
             for item in tree_comm.get_children(): tree_comm.delete(item)
-            con = sqlite3.connect(get_db_path())
-            cur = con.cursor()
-            cur.execute("SELECT user_name, comment, timestamp FROM task_comments WHERE task_id=? ORDER BY timestamp DESC", (task_id,))
-            for r in cur.fetchall(): tree_comm.insert("", END, values=r)
-            con.close()
+            try:
+                con = sqlite3.connect(get_db_path())
+                cur = con.cursor()
+                cur.execute("SELECT user_name, comment, timestamp FROM task_comments WHERE task_id=? ORDER BY timestamp DESC", (task_id,))
+                for r in cur.fetchall(): tree_comm.insert("", END, values=r)
+                con.close()
+            except: pass
             main_scroll_c.configure(scrollregion=main_scroll_c.bbox("all"))
             
         refresh_comments()
         
-        # Add Comment Input
         add_comm_f = Frame(main_scroll_f, bg=CARD_BG, padx=15, pady=12, highlightbackground=BORDER_COLOR, highlightthickness=1)
         add_comm_f.pack(fill=X, pady=10)
         
@@ -6612,21 +6622,22 @@ class ProjectMonitorApp:
             tree_att.column(c, width=180)
         tree_att.pack(fill=X, pady=5)
         self._attach_tree_hover(tree_att)
-
+ 
         def refresh_att():
             for i in tree_att.get_children(): tree_att.delete(i)
-            con = sqlite3.connect(get_db_path())
-            cur = con.cursor()
-            cur.execute("SELECT file_path, uploaded_by, timestamp FROM task_attachments WHERE task_id=? ORDER BY id DESC", (task_id,))
-            for r in cur.fetchall():
-                fname = os.path.basename(r[0])
-                tree_att.insert("", END, values=(fname, r[1], r[2]), tags=(r[0],))
-            con.close()
+            try:
+                con = sqlite3.connect(get_db_path())
+                cur = con.cursor()
+                cur.execute("SELECT file_path, uploaded_by, timestamp FROM task_attachments WHERE task_id=? ORDER BY id DESC", (task_id,))
+                for r in cur.fetchall():
+                    fname = os.path.basename(r[0])
+                    tree_att.insert("", END, values=(fname, r[1], r[2]), tags=(r[0],))
+                con.close()
+            except: pass
             main_scroll_c.configure(scrollregion=main_scroll_c.bbox("all"))
-
+ 
         refresh_att()
-
-        # Attachment Controls
+ 
         att_btn_f = Frame(main_scroll_f, bg=CONTENT_BG)
         att_btn_f.pack(fill=X, pady=10)
         
@@ -6649,7 +6660,7 @@ class ProjectMonitorApp:
                 refresh_att()
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to attach: {e}")
-
+ 
         def open_selected():
             sel = tree_att.selection()
             if not sel: return
@@ -6658,7 +6669,7 @@ class ProjectMonitorApp:
                 os.startfile(fp)
             except Exception as e:
                 messagebox.showerror("Error", f"Could not open file: {e}")
-
+ 
         Button(att_btn_f, text="+ UPLOAD FILE", bg=ACCENT_PURPLE, fg=WHITE, font=('Segoe UI', 8, 'bold'), 
                relief=FLAT, padx=15, pady=8, cursor="hand2", command=attach_file).pack(side=LEFT, padx=(0, 10))
         Button(att_btn_f, text="OPEN FILE", bg=HEADER_BG, fg=WHITE, font=('Segoe UI', 8, 'bold'), 
@@ -6671,11 +6682,15 @@ class ProjectMonitorApp:
 
     def _on_status_save_complete(self, modal_window):
         """Callback after task status is saved in background."""
-        # Refresh UI without triggering a heavy full API sync
-        self.refresh_current_page(force_sync=False)
-        messagebox.showinfo("Success", "Status Updated Successfully")
+        # 1. Close modal immediately for instant feedback
         try: modal_window.destroy()
         except: pass
+        
+        # 2. Refresh background UI quietly
+        self.refresh_current_page(force_sync=False)
+        
+        # 3. Optional: Show a subtle non-blocking notification if needed
+        # (Removed blocking messagebox to make it feel "fast")
 
     def refresh_tasks(self):
         try:
