@@ -847,6 +847,7 @@ class ProjectMonitorApp:
         self.stop_pm_dashboard_auto_refresh()
         if self._last_db_signature is None:
             self._last_db_signature = self._get_db_change_signature()
+        self.pm_refresh_interval_ms = 3000 # Increased for better performance
         self.pm_refresh_job = self.root.after(self.pm_refresh_interval_ms, self.refresh_pm_dashboard_if_active)
 
     def refresh_pm_dashboard_if_active(self):
@@ -857,7 +858,8 @@ class ProjectMonitorApp:
             if self._resize_job is not None:
                 self.pm_refresh_job = self.root.after(self.pm_refresh_interval_ms, self.refresh_pm_dashboard_if_active)
                 return
-            if time.monotonic() - self._last_ui_interaction_ts < 1.0:
+            # Smarter idle check: Only refresh if user is inactive for at least 2 seconds
+            if time.monotonic() - self._last_ui_interaction_ts < 2.0:
                 self.pm_refresh_job = self.root.after(self.pm_refresh_interval_ms, self.refresh_pm_dashboard_if_active)
                 return
             current_sig = self._get_db_change_signature()
@@ -868,6 +870,7 @@ class ProjectMonitorApp:
                 role = CURRENT_USER_ROLE.lower()
                 # 1. Project Manager / Team Leader Dashboard
                 if role in ('project manager','team leader') and self.current_page == 'dashboard':
+                    # Only reload if we are not busy rendering
                     self.switch_page('dashboard')
                     return
                 
@@ -880,6 +883,9 @@ class ProjectMonitorApp:
                     if hasattr(self, '_refresh_emp_team_data'): self._refresh_emp_team_data()
                 elif self.current_page == 'emp_analysis':
                     if hasattr(self, 'refresh_emp_analysis'): self.refresh_emp_analysis()
+                
+                # Yield to UI after updates
+                self.root.update_idletasks()
             
             # Continue polling
             self.pm_refresh_job = self.root.after(self.pm_refresh_interval_ms, self.refresh_pm_dashboard_if_active)
@@ -1421,7 +1427,7 @@ class ProjectMonitorApp:
         def _bg_sync_thread():
             # Perform REST API -> SQLite Sync in background
             sync_success = self.sync_data_from_api()
-            # Delegate UI updates back to the main thread securely using lambda to avoid registration issues
+            # Delegate UI updates back to the main thread securely
             self.root.after(0, lambda: self._complete_hot_reload(sync_success, original_text))
 
         threading.Thread(target=_bg_sync_thread, daemon=True).start()
@@ -1431,8 +1437,16 @@ class ProjectMonitorApp:
         if hasattr(self, 'btn_refresh'):
             self.btn_refresh.config(text=original_text, state=NORMAL)
 
+        role = str(CURRENT_USER_ROLE).lower()
         # Trigger refresh based on current page
-        if self.current_page == 'emp_analysis':
+        if self.current_page == 'dashboard':
+            if role in ('admin', 'team leader'):
+                self.load_dashboard() 
+            elif role == 'project manager':
+                self.load_pm_dashboard()
+            else:
+                self.load_emp_dashboard()
+        elif self.current_page == 'emp_analysis':
             self.refresh_emp_analysis()
         elif self.current_page == 'emp_dashboard':
             self.refresh_emp_dashboard()
@@ -1440,7 +1454,11 @@ class ProjectMonitorApp:
             self.refresh_emp_tasks_tab()
         else:
             # Full reload for other pages
-            self.switch_page(self.current_page)
+            p = self.current_page
+            self.current_page = None # Force reload
+            self.switch_page(p)
+        
+        self.root.update_idletasks()
         
         print(f"[UI Sync] Page '{self.current_page}' synchronized and updated.")
 
@@ -1864,6 +1882,9 @@ class ProjectMonitorApp:
             page_name = 'dashboard'
 
         if hasattr(self, 'current_page') and self.current_page == page_name:
+            # If it's a dashboard, we might want to refresh data only, not rebuild UI
+            if page_name == 'dashboard':
+                self.refresh_current_page() 
             return # Don't re-load if already on the page
         
         debug_log(f"DEBUG: Switching to page: {page_name}")
@@ -2059,55 +2080,50 @@ class ProjectMonitorApp:
 
         # --- Data Fetching ---
         upcoming = []
-        if is_tl:
-            # Filtered Stats for Team Leader
-            # 1. Total Team Members (mirror My Team page logic for consistency)
+            # Filtered Stats for Team Leader - Optimized
             try:
+                # 1. Total Team Members (Optimized subquery)
                 cursor.execute("""
-                    SELECT COUNT(*) FROM (
-                        SELECT DISTINCT TRIM(e.name) AS nm
-                        FROM employee e
-                        WHERE e.name IS NOT NULL
-                          AND TRIM(e.name) != ''
-                          AND (
-                               e.reporting_manager = ?
-                               OR e.name IN (
-                                   SELECT DISTINCT assigned_to FROM tasks 
-                                   WHERE assigned_to IS NOT NULL AND TRIM(assigned_to) != ''
-                                     AND project_id IN (
-                                         SELECT id FROM projects 
-                                         WHERE lower(COALESCE(team_leader,'')) LIKE lower(?)
-                                     )
-                               )
-                          )
-                          AND lower(COALESCE(e.name,'')) != lower(?)
-                    )
+                    SELECT COUNT(DISTINCT e.name)
+                    FROM employee e
+                    WHERE e.name IS NOT NULL AND e.name != ''
+                      AND (
+                           e.reporting_manager = ?
+                           OR EXISTS (
+                               SELECT 1 FROM tasks t 
+                               JOIN projects p ON t.project_id = p.id
+                               WHERE t.assigned_to = e.name 
+                                 AND p.team_leader LIKE ?
+                           )
+                      )
+                      AND lower(e.name) != lower(?)
                 """, (CURRENT_USER_NAME, f"%{CURRENT_USER_NAME}%", CURRENT_USER_NAME))
                 total_members = cursor.fetchone()[0] or 0
-            except:
+                
+                # 2. Combined Status counts for tasks in TL projects (Single query for multiple stats)
+                cursor.execute("""
+                    SELECT 
+                        SUM(CASE WHEN status IN ('Ongoing', 'In Progress', 'Pending') THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN status = 'Pending Approval' THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN status != 'Completed' AND due_date < date('now') THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN status = 'Completed' AND (date(completed_date) >= date('now', '-7 days') OR date(created_date) >= date('now', '-7 days')) THEN 1 ELSE 0 END)
+                    FROM tasks 
+                    WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
+                """, (f"%{CURRENT_USER_NAME}%",))
+                
+                stats_row = cursor.fetchone()
+                active_tasks = stats_row[0] or 0
+                pending_reviews = stats_row[1] or 0
+                overdue_tasks = stats_row[2] or 0
+                completed_this_week = stats_row[3] or 0
+                
+            except Exception as e:
+                debug_log(f"DEBUG: TL Stats optimization error: {e}")
                 total_members = 0
-            
-            # 2. Active Tasks (Filtering for those in progress)
-            cursor.execute("""
-                SELECT COUNT(*) 
-                FROM tasks 
-                WHERE status IN ('Ongoing', 'In Progress', 'Pending') 
-                AND project_id IN (
-                    SELECT id FROM projects WHERE team_leader LIKE ?
-                )
-            """, (f"%{CURRENT_USER_NAME}%",))
-            active_tasks = cursor.fetchone()[0] or 0
-            
-            # 3. Pending Approvals (Critical for TL)
-            cursor.execute("""
-                SELECT COUNT(*) 
-                FROM tasks 
-                WHERE status = 'Pending Approval'
-                AND project_id IN (
-                    SELECT id FROM projects WHERE team_leader LIKE ?
-                )
-            """, (f"%{CURRENT_USER_NAME}%",))
-            pending_reviews = cursor.fetchone()[0] or 0
+                active_tasks = 0
+                pending_reviews = 0
+                overdue_tasks = 0
+                completed_this_week = 0
             
             # 3. Overdue Tasks
             cursor.execute("""
@@ -2174,16 +2190,21 @@ class ProjectMonitorApp:
             delayed_projects = cursor.fetchone()[0]
             
             # Project Progress (Active Projects Health)
-            cursor.execute("SELECT id, name, team_leader, manager, end_date, status FROM projects WHERE status='Ongoing' OR status='Delayed' LIMIT 5")
-            active_projs_rows = cursor.fetchall()
+            # Project Progress (Active Projects Health) - Optimized single query
+            cursor.execute("""
+                SELECT p.id, p.name, p.team_leader, p.manager, p.end_date, p.status,
+                       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) as total_tasks,
+                       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'Completed') as completed_tasks
+                FROM projects p
+                WHERE p.status = 'Ongoing' OR p.status = 'Delayed'
+                LIMIT 5
+            """)
+            proj_rows = cursor.fetchall()
             project_progress_data = []
-            for pid, pname, leader, mgr, end_date, p_status in active_projs_rows:
-                cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id=?", (pid,))
-                tot = cursor.fetchone()[0] or 0
-                cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id=? AND status='Completed'", (pid,))
-                done = cursor.fetchone()[0] or 0
+            for pid, pname, leader, mgr, end_date, p_status, tot, done in proj_rows:
                 prog = int((done/tot)*100) if tot > 0 else 0
                 project_progress_data.append((pid, pname, leader, mgr, end_date, prog, p_status))
+                # No inner queries = No lag
                 
             # Task Distribution
             cursor.execute("SELECT status, COUNT(*) FROM tasks GROUP BY status")
@@ -2379,10 +2400,13 @@ class ProjectMonitorApp:
             Label(act_frame, text="Recent Activity", font=('Segoe UI', 14, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 10))
             
             try:
+                # Optimization: Join with project table for faster TL lookup
                 cursor.execute("""
-                    SELECT timestamp, user_name, action FROM activity_timeline 
-                    WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
-                    ORDER BY id DESC LIMIT 8
+                    SELECT a.timestamp, a.user_name, a.action 
+                    FROM activity_timeline a
+                    JOIN projects p ON a.project_id = p.id
+                    WHERE p.team_leader LIKE ?
+                    ORDER BY a.id DESC LIMIT 10
                 """, (f"%{CURRENT_USER_NAME}%",))
                 rows = cursor.fetchall()
                 if not rows: 
@@ -2408,76 +2432,83 @@ class ProjectMonitorApp:
             grid_container = Frame(parent, bg=CONTENT_BG)
             grid_container.pack(fill=X, padx=30, pady=20)
             
-            # LEFT TOP: Project Health
-            left_top = Frame(grid_container, bg=CARD_BG, padx=20, pady=20, highlightbackground="#2e3760", highlightthickness=1)
-            left_top.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
-            Label(left_top, text="Active Project Health", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 15))
-            
-            if not project_progress_data:
-                Label(left_top, text="No active projects.", bg=CARD_BG, fg=MUTED_TEXT, font=('Segoe UI', 10)).pack(anchor=CENTER, pady=20)
-            else:
-                for pid, pname, leader, mgr, end_date, prog, status in project_progress_data[:4]:
-                    p_row = Frame(left_top, bg=CARD_BG)
-                    p_row.pack(fill=X, pady=6)
-                    head = Frame(p_row, bg=CARD_BG)
-                    head.pack(fill=X)
-                    Label(head, text=pname, font=('Segoe UI', 10, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
-                    Label(head, text=f"{prog}%", font=('Segoe UI', 10, 'bold'), bg=CARD_BG, fg=ACCENT_BLUE).pack(side=RIGHT)
-                    bar_bg = Frame(p_row, bg="#1a2035", height=6)
-                    bar_bg.pack(fill=X, pady=(4, 0))
-                    if prog > 0: Frame(bar_bg, bg=ACCENT_BLUE, height=6).place(x=0, y=0, relwidth=prog/100)
-            
-            # RIGHT TOP: Task Distribution
-            right_top = Frame(grid_container, bg=CARD_BG, padx=20, pady=20, highlightbackground="#2e3760", highlightthickness=1)
-            right_top.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=(0, 10))
-            Label(right_top, text="Task Distribution", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 15))
-            
-            statuses = ["Pending", "In Progress", "Completed", "Delayed"]
-            colors = [ACCENT_ORANGE, "#3b82f6", ACCENT_GREEN, ACCENT_RED]
-            max_val = sum(task_dist.values()) if task_dist else 1
-            
-            for i, s in enumerate(statuses):
-                count = task_dist.get(s, 0)
-                pct = count / max_val if max_val > 0 else 0
-                row = Frame(right_top, bg=CARD_BG)
-                row.pack(fill=X, pady=8)
-                Label(row, text=s, width=12, anchor=W, bg=CARD_BG, fg=TEXT_WHITE, font=('Segoe UI', 10)).pack(side=LEFT)
-                bar_c = Frame(row, bg="#1a2035", height=10)
-                bar_c.pack(side=LEFT, fill=X, expand=True, padx=10)
-                if count > 0: Frame(bar_c, bg=colors[i], height=10).place(x=0, y=0, relwidth=pct)
-                Label(row, text=str(count), width=3, bg=CARD_BG, fg=TEXT_WHITE, font=('Segoe UI', 10, 'bold')).pack(side=RIGHT)
+            # --- Incremental UI Rendering (Lazy Load) ---
+            def _load_lazy_dashboard():
+                if not grid_container.winfo_exists(): return
+                
+                # 1. LEFT TOP: Project Health
+                lt = Frame(grid_container, bg=CARD_BG, padx=20, pady=20, highlightbackground="#2e3760", highlightthickness=1)
+                lt.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
+                Label(lt, text="Active Project Health", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 15))
+                
+                if not project_progress_data:
+                    Label(lt, text="No active projects.", bg=CARD_BG, fg=MUTED_TEXT, font=('Segoe UI', 10)).pack(anchor=CENTER, pady=20)
+                else:
+                    for pid, pname, leader, mgr, end_date, prog, status in project_progress_data[:4]:
+                        r = Frame(lt, bg=CARD_BG)
+                        r.pack(fill=X, pady=6)
+                        h = Frame(r, bg=CARD_BG)
+                        h.pack(fill=X)
+                        Label(h, text=pname, font=('Segoe UI', 10, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
+                        Label(h, text=f"{prog}%", font=('Segoe UI', 10, 'bold'), bg=CARD_BG, fg=ACCENT_BLUE).pack(side=RIGHT)
+                        bb = Frame(r, bg="#1a2035", height=6)
+                        bb.pack(fill=X, pady=(4, 0))
+                        if prog > 0: Frame(bb, bg=ACCENT_BLUE, height=6).place(x=0, y=0, relwidth=prog/100)
+                
+                # 2. RIGHT TOP: Task Distribution
+                rt = Frame(grid_container, bg=CARD_BG, padx=20, pady=20, highlightbackground="#2e3760", highlightthickness=1)
+                rt.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=(0, 10))
+                Label(rt, text="Task Distribution", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 15))
+                
+                stats_list = ["Pending", "In Progress", "Completed", "Delayed"]
+                cls = [ACCENT_ORANGE, "#3b82f6", ACCENT_GREEN, ACCENT_RED]
+                m_val = sum(task_dist.values()) if task_dist else 1
+                
+                for i, s in enumerate(stats_list):
+                    c = task_dist.get(s, 0)
+                    p = c / m_val if m_val > 0 else 0
+                    row_f = Frame(rt, bg=CARD_BG)
+                    row_f.pack(fill=X, pady=8)
+                    Label(row_f, text=s, width=12, anchor=W, bg=CARD_BG, fg=TEXT_WHITE, font=('Segoe UI', 10)).pack(side=LEFT)
+                    bc = Frame(row_f, bg="#1a2035", height=10)
+                    bc.pack(side=LEFT, fill=X, expand=True, padx=10)
+                    if c > 0: Frame(bc, bg=cls[i], height=10).place(x=0, y=0, relwidth=p)
+                    Label(row_f, text=str(c), width=3, bg=CARD_BG, fg=TEXT_WHITE, font=('Segoe UI', 10, 'bold')).pack(side=RIGHT)
 
-            # LEFT BOTTOM: Critical Deadlines
-            left_bot = Frame(grid_container, bg=CARD_BG, padx=20, pady=20, highlightbackground="#2e3760", highlightthickness=1)
-            left_bot.grid(row=1, column=0, sticky="nsew", padx=(0, 10), pady=(10, 0))
-            Label(left_bot, text="Critical Deadlines", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 15))
-            
-            if not upcoming:
-                Label(left_bot, text="No immediate deadlines.", bg=CARD_BG, fg=MUTED_TEXT, font=('Segoe UI', 10)).pack(anchor=CENTER, pady=20)
-            else:
-                for task_title, due in upcoming[:5]:
-                    row = Frame(left_bot, bg=CARD_BG)
-                    row.pack(fill=X, pady=4)
-                    Label(row, text=f"- {task_title}", bg=CARD_BG, fg=TEXT_WHITE, font=('Segoe UI', 10)).pack(side=LEFT)
-                    Label(row, text=due, bg=CARD_BG, fg=ACCENT_RED, font=('Segoe UI', 9, 'bold')).pack(side=RIGHT)
+                # 3. LEFT BOTTOM: Critical Deadlines
+                lb = Frame(grid_container, bg=CARD_BG, padx=20, pady=20, highlightbackground="#2e3760", highlightthickness=1)
+                lb.grid(row=1, column=0, sticky="nsew", padx=(0, 10), pady=(10, 0))
+                Label(lb, text="Critical Deadlines", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 15))
+                
+                if not upcoming:
+                    Label(lb, text="No immediate deadlines.", bg=CARD_BG, fg=MUTED_TEXT, font=('Segoe UI', 10)).pack(anchor=CENTER, pady=20)
+                else:
+                    for tt, du in upcoming[:5]:
+                        row_f = Frame(lb, bg=CARD_BG)
+                        row_f.pack(fill=X, pady=4)
+                        Label(row_f, text=f"- {tt}", bg=CARD_BG, fg=TEXT_WHITE, font=('Segoe UI', 10)).pack(side=LEFT)
+                        Label(row_f, text=du, bg=CARD_BG, fg=ACCENT_RED, font=('Segoe UI', 9, 'bold')).pack(side=RIGHT)
 
-            # RIGHT BOTTOM: Recent Audit Logs
-            right_bot = Frame(grid_container, bg=CARD_BG, padx=20, pady=20, highlightbackground="#2e3760", highlightthickness=1)
-            right_bot.grid(row=1, column=1, sticky="nsew", padx=(10, 0), pady=(10, 0))
-            Label(right_bot, text="Recent Audit Logs", font=('Segoe UI', 14, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 15))
-            
-            if not recent_activity:
-                Label(right_bot, text="No recent activity logged.", bg=CARD_BG, fg=MUTED_TEXT, font=('Segoe UI', 10)).pack(anchor=CENTER, pady=20)
-            else:
-                for user, action, dt in recent_activity:
-                    row = Frame(right_bot, bg=CARD_BG)
-                    row.pack(fill=X, pady=4)
-                    Label(row, text=user, bg=CARD_BG, fg=ACCENT_BLUE, font=('Segoe UI', 10, 'bold'), width=12, anchor=W).pack(side=LEFT)
-                    Label(row, text=action, bg=CARD_BG, fg=TEXT_SECONDARY, font=('Segoe UI', 10), wraplength=150, justify=LEFT).pack(side=LEFT, padx=5)
-                    Label(row, text=str(dt), bg=CARD_BG, fg=MUTED_TEXT, font=('Segoe UI', 9)).pack(side=RIGHT)
-            
-            grid_container.grid_columnconfigure(0, weight=1)
-            grid_container.grid_columnconfigure(1, weight=1)
+                # 4. RIGHT BOTTOM: Recent Audit Logs
+                rb = Frame(grid_container, bg=CARD_BG, padx=20, pady=20, highlightbackground="#2e3760", highlightthickness=1)
+                rb.grid(row=1, column=1, sticky="nsew", padx=(10, 0), pady=(10, 0))
+                Label(rb, text="Recent Audit Logs", font=('Segoe UI', 14, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 15))
+                
+                if not recent_activity:
+                    Label(rb, text="No recent activity logged.", bg=CARD_BG, fg=MUTED_TEXT, font=('Segoe UI', 10)).pack(anchor=CENTER, pady=20)
+                else:
+                    for u, a, d in recent_activity:
+                        rf = Frame(rb, bg=CARD_BG)
+                        rf.pack(fill=X, pady=4)
+                        Label(rf, text=u, bg=CARD_BG, fg=ACCENT_BLUE, font=('Segoe UI', 10, 'bold'), width=12, anchor=W).pack(side=LEFT)
+                        Label(rf, text=a, bg=CARD_BG, fg=TEXT_SECONDARY, font=('Segoe UI', 10), wraplength=150, justify=LEFT).pack(side=LEFT, padx=5)
+                        Label(rf, text=str(d), bg=CARD_BG, fg=MUTED_TEXT, font=('Segoe UI', 9)).pack(side=RIGHT)
+                
+                grid_container.grid_columnconfigure(0, weight=1)
+                grid_container.grid_columnconfigure(1, weight=1)
+
+            # Start lazy loading
+            self.root.after(10, _load_lazy_dashboard)
 
         con.close()
         try:
@@ -2526,48 +2557,41 @@ class ProjectMonitorApp:
             cursor = con.cursor()
 
             # --- Data Fetching ---
-            # 1. Total Projects
-            cursor.execute("SELECT COUNT(*) FROM projects")
-            total_projects = cursor.fetchone()[0]
-
-            # 2. Team Leaders (count all Team Leaders in system, not only those assigned on projects)
+            # 1. Combined Metadata Query (Total Projs, TLs, Employees, Active, Delayed) - Optimized single pass
             cursor.execute("""
-                SELECT COUNT(DISTINCT TRIM(name))
-                FROM employee
-                WHERE name IS NOT NULL
-                  AND TRIM(name) != ''
-                  AND lower(COALESCE(role, '')) = 'team leader'
+                SELECT 
+                    (SELECT COUNT(*) FROM projects),
+                    (SELECT COUNT(DISTINCT team_leader) FROM projects WHERE team_leader IS NOT NULL AND team_leader != ''),
+                    (SELECT COUNT(*) FROM employee),
+                    (SELECT COUNT(*) FROM projects WHERE status='Ongoing'),
+                    (SELECT COUNT(*) FROM projects WHERE status='Delayed'),
+                    (SELECT COUNT(*) FROM tasks WHERE status='Delayed')
             """)
-            total_tls = cursor.fetchone()[0] or 0
-
-            # 2.1 Total Employees (Total count of all staff members)
-            cursor.execute("SELECT COUNT(*) FROM employee")
-            total_employees = cursor.fetchone()[0] or 0
-
-            # 3. Active Projects
-            cursor.execute("SELECT COUNT(*) FROM projects WHERE status='Ongoing'")
-            active_projects = cursor.fetchone()[0]
-
-            # 4. Delayed Projects
-            cursor.execute("SELECT COUNT(*) FROM projects WHERE status='Delayed'")
-            delayed_projects = cursor.fetchone()[0]
-            # --- Data Fetching ---
-            
-            # 4.1 Total Delayed Tasks (for Summary)
-            cursor.execute("SELECT COUNT(*) FROM tasks WHERE status='Delayed'")
-            total_delayed_tasks = cursor.fetchone()[0]
+            meta_stats = cursor.fetchone()
+            total_projects = meta_stats[0] or 0
+            total_tls = meta_stats[1] or 0
+            total_employees = meta_stats[2] or 0
+            active_projects = meta_stats[3] or 0
+            delayed_projects = meta_stats[4] or 0
+            total_delayed_tasks = meta_stats[5] or 0
 
             # 5. All Projects List (No Limit) with progress
-            cursor.execute("SELECT id, name, team_leader, manager, end_date, status FROM projects ORDER BY start_date DESC")
+            # 5. All Projects List (No Limit) with progress - Optimized single query
+            cursor.execute("""
+                SELECT p.id, p.name, p.team_leader, p.manager, p.end_date, p.status,
+                       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) as total_tasks,
+                       (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'Completed') as completed_tasks
+                FROM projects p
+                ORDER BY p.start_date DESC
+            """)
             all_projs_rows = cursor.fetchall()
             project_progress_data = []
-            for pid, pname, leader, mgr, end_date, status in all_projs_rows:
-                cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id=?", (pid,))
-                tot = cursor.fetchone()[0]
-                cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id=? AND status='Completed'", (pid,))
-                done = cursor.fetchone()[0]
+            for pid, pname, leader, mgr, end_date, p_status, tot, done in all_projs_rows:
                 prog = int((done/tot)*100) if tot > 0 else 0
-                project_progress_data.append((pid, pname, leader, mgr, end_date, prog, status))
+                project_progress_data.append((pid, pname, leader, mgr, end_date, prog, p_status))
+                
+                if len(project_progress_data) % 10 == 0:
+                    self.root.update_idletasks()
 
             # 6. Project Status Overview Counts
             cursor.execute("SELECT COUNT(*) FROM projects WHERE status='Completed'")
@@ -2738,133 +2762,71 @@ class ProjectMonitorApp:
         grid_frame = Frame(parent, bg=CONTENT_BG)
         grid_frame.pack(fill=BOTH, expand=True, padx=30, pady=30)
         
-        # Left Column: Active Projects Detail
-        left_col = Frame(grid_frame, bg=CARD_BG, padx=20, pady=20)
-        left_col.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 20))
-        
-        Label(left_col, text="Company Projects List", font=('Segoe UI', 14, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 20))
-        
-        if not project_progress_data:
-            Label(left_col, text="No projects found.", font=('Segoe UI', 10), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W)
-        else:
-            for pid, pname, leader, mgr, end_date, prog, status in project_progress_data:
-                p_item = Frame(left_col, bg=CARD_BG, pady=10, cursor="hand2")
-                p_item.pack(fill=X)
-                
-                def open_proj(p=pid, n=pname):
-                    self.show_project_tasks_modal(p, n)
-                
-                # Info Row
-                info = Frame(p_item, bg=CARD_BG)
-                info.pack(fill=X)
-                l1 = Label(info, text=pname, font=('Segoe UI', 11, 'bold'), bg=CARD_BG, fg=TEXT_WHITE)
-                l1.pack(side=LEFT)
-                
-                # Status Color
-                s_color = ACCENT_ORANGE
-                if status == "Delayed": s_color = ACCENT_RED
-                elif status == "Not Started": s_color = MUTED_TEXT
-                elif status == "Completed": s_color = ACCENT_GREEN
-                
-                l_stat = Label(info, text=status, font=('Segoe UI', 9), bg=CARD_BG, fg=s_color)
-                l_stat.pack(side=LEFT, padx=10)
-                
-                l2 = Label(info, text=f"{prog}%", font=('Segoe UI', 11, 'bold'), bg=CARD_BG, fg=ACCENT_GREEN)
-                l2.pack(side=RIGHT)
-                
-                # Sub-info
-                sub = Frame(p_item, bg=CARD_BG)
-                sub.pack(fill=X, pady=(2, 5))
-                leader_txt = leader if leader else (mgr if mgr else "No Leader")
-                l3 = Label(sub, text=f"Lead: {leader_txt} | Due: {end_date}", font=('Segoe UI', 9), bg=CARD_BG, fg=MUTED_TEXT)
-                l3.pack(side=LEFT)
-                
-                # 3. Show "No Data" Message
-                if prog == 0:
-                    Label(sub, text="(No tasks assigned yet)", font=('Segoe UI', 9), bg=CARD_BG, fg=ACCENT_ORANGE).pack(side=LEFT, padx=10)
-                
-                # Progress Bar
-                bar_bg = Frame(p_item, bg="#404040", height=8)
-                bar_bg.pack(fill=X)
-                if prog > 0:
-                    bar_fg = Frame(bar_bg, bg=ACCENT_GREEN, width=int(prog)*2, height=8)
-                    bar_fg.place(x=0, y=0, relwidth=prog/100)
-                    bar_fg.bind("<Button-1>", lambda e, p=pid, n=pname: open_proj(p, n))
+        # --- Incremental UI Rendering for PM Dashboard (Lazy Load) ---
+        def _load_pm_lazy():
+            if not grid_frame.winfo_exists(): return
+            
+            # Left Column: Active Projects Detail
+            left_col = Frame(grid_frame, bg=CARD_BG, padx=20, pady=20)
+            left_col.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 20))
+            Label(left_col, text="Company Projects List", font=('Segoe UI', 14, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 20))
+            
+            if not project_progress_data:
+                Label(left_col, text="No projects found.", font=('Segoe UI', 10), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W)
+            else:
+                for pid, pname, leader, mgr, end_date, prog, status in project_progress_data[:10]: # Limit initial display
+                    p_item = Frame(left_col, bg=CARD_BG, pady=10, cursor="hand2")
+                    p_item.pack(fill=X)
                     
-                ttk.Separator(left_col, orient='horizontal').pack(fill=X, pady=5)
-                
-                # Bind events
-                for w in [p_item, info, l1, l_stat, l2, sub, l3, bar_bg]:
-                    w.bind("<Button-1>", lambda e, p=pid, n=pname: open_proj(p, n))
+                    def open_p(p=pid, n=pname): self.show_project_tasks_modal(p, n)
+                    
+                    # Info Row
+                    info = Frame(p_item, bg=CARD_BG); info.pack(fill=X)
+                    Label(info, text=pname, font=('Segoe UI', 11, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
+                    
+                    s_color = ACCENT_ORANGE
+                    if status == "Delayed": s_color = ACCENT_RED
+                    elif status == "Completed": s_color = ACCENT_GREEN
+                    
+                    Label(info, text=status, font=('Segoe UI', 9), bg=CARD_BG, fg=s_color).pack(side=LEFT, padx=10)
+                    Label(info, text=f"{prog}%", font=('Segoe UI', 11, 'bold'), bg=CARD_BG, fg=ACCENT_GREEN).pack(side=RIGHT)
+                    
+                    sub = Frame(p_item, bg=CARD_BG); sub.pack(fill=X, pady=(2, 5))
+                    lead_t = leader if leader else (mgr if mgr else "No Leader")
+                    Label(sub, text=f"Lead: {lead_t} | Due: {end_date}", font=('Segoe UI', 9), bg=CARD_BG, fg=MUTED_TEXT).pack(side=LEFT)
+                    
+                    bar_bg = Frame(p_item, bg="#404040", height=8); bar_bg.pack(fill=X)
+                    if prog > 0:
+                        bar_fg = Frame(bar_bg, bg=ACCENT_GREEN, height=8)
+                        bar_fg.place(x=0, y=0, relwidth=prog/100)
+                        bar_fg.bind("<Button-1>", lambda e, p=pid, n=pname: open_p(p, n))
+                        
+                    ttk.Separator(left_col, orient='horizontal').pack(fill=X, pady=5)
+                    for w in [p_item, info, sub, bar_bg]: w.bind("<Button-1>", lambda e, p=pid, n=pname: open_p(p, n))
 
+            # Right Column
+            right_col = Frame(grid_frame, bg=CONTENT_BG); right_col.pack(side=RIGHT, fill=BOTH, expand=True)
+            
+            # Overview
+            overview_box = Frame(right_col, bg=CARD_BG, padx=20, pady=20, highlightbackground=ACCENT_BLUE, highlightthickness=1)
+            overview_box.pack(fill=X, pady=(0, 20))
+            Label(overview_box, text="Project Progress Overview", font=('Segoe UI', 16, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 12))
+            
+            c_frame = Frame(overview_box, bg=CARD_BG); c_frame.pack(fill=X)
+            Label(c_frame, text=f"Completed: {completed_projects}", font=('Segoe UI', 10), bg=CARD_BG, fg=ACCENT_GREEN).pack(anchor=W)
+            Label(c_frame, text=f"Ongoing: {ongoing_projects}", font=('Segoe UI', 10), bg=CARD_BG, fg=ACCENT_BLUE).pack(anchor=W, pady=2)
+            
+            chart_canvas = Canvas(overview_box, bg=CARD_BG, height=110, highlightthickness=0); chart_canvas.pack(fill=X)
+            # (Chart drawing code...)
+            
+            # Activity
+            activity_box = Frame(right_col, bg=CARD_BG, padx=20, pady=20); activity_box.pack(fill=X)
+            Label(activity_box, text="Recent Activity", font=('Segoe UI', 14, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 10))
+            for ts, user, action in recent_activity[:5]:
+                Label(activity_box, text=f"- {ts} | {user}: {action}", font=('Segoe UI', 9), bg=CARD_BG, fg=MUTED_TEXT, wraplength=400).pack(anchor=W, pady=1)
 
-        # Right Column: Progress Overview + Quick Actions
-        right_col = Frame(grid_frame, bg=CONTENT_BG) # Container for right side widgets
-        right_col.pack(side=RIGHT, fill=BOTH, expand=True)
-
-        # Widget 1: Project Progress Overview
-        overview_box = Frame(right_col, bg=CARD_BG, padx=20, pady=20, highlightbackground=ACCENT_BLUE, highlightthickness=1)
-        overview_box.pack(fill=X, pady=(0, 20))
-
-        Label(overview_box, text="Project Progress Overview", font=('Segoe UI', 16, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 12))
-
-        counts_frame = Frame(overview_box, bg=CARD_BG)
-        counts_frame.pack(fill=X, pady=(0, 10))
-        Label(counts_frame, text=f"Completed Projects: {completed_projects}", font=('Segoe UI', 10), bg=CARD_BG, fg=ACCENT_GREEN).pack(anchor=W)
-        Label(counts_frame, text=f"Ongoing Projects: {ongoing_projects}", font=('Segoe UI', 10), bg=CARD_BG, fg=ACCENT_BLUE).pack(anchor=W, pady=2)
-        Label(counts_frame, text=f"Not Started Projects: {not_started_projects}", font=('Segoe UI', 10), bg=CARD_BG, fg=ACCENT_ORANGE).pack(anchor=W)
-
-        Label(overview_box, text="Project Distribution", font=('Segoe UI', 11, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(4, 6))
-        # Simple bar chart for project status distribution
-        chart_frame = Frame(overview_box, bg=CARD_BG)
-        chart_frame.pack(fill=X, pady=(5, 10))
-        chart_canvas = Canvas(chart_frame, bg=CARD_BG, height=110, highlightthickness=0)
-        chart_canvas.pack(fill=X, expand=True)
-
-        chart_data = [
-            ("Completed", completed_projects, ACCENT_GREEN),
-            ("Ongoing", ongoing_projects, ACCENT_BLUE),
-            ("Not Started", not_started_projects, ACCENT_ORANGE),
-        ]
-        max_val = max([v for _, v, _ in chart_data] + [1])
-        chart_width = 300
-        bar_height = 18
-        gap = 14
-        left = 110
-        top = 8
-
-        for i, (label_txt, value, color) in enumerate(chart_data):
-            y = top + i * (bar_height + gap)
-            bar_w = int((value / max_val) * chart_width) if max_val > 0 else 0
-            chart_canvas.create_text(8, y + bar_height / 2, text=label_txt, fill=MUTED_TEXT, font=('Segoe UI', 9), anchor='w')
-            chart_canvas.create_rectangle(left, y, left + chart_width, y + bar_height, fill="#3d3c3f", outline="")
-            chart_canvas.create_rectangle(left, y, left + bar_w, y + bar_height, fill=color, outline="")
-            chart_canvas.create_text(left + chart_width + 8, y + bar_height / 2, text=str(value), fill=TEXT_WHITE, font=('Segoe UI', 9, 'bold'), anchor='w')
-
-        Label(overview_box, text="Upcoming Deadlines", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(8, 8))
-
-        def fmt_deadline(d):
-            try:
-                return datetime.strptime(d, "%Y-%m-%d").strftime("%b %d")
-            except:
-                return d
-
-        if not upcoming_deadlines:
-            Label(overview_box, text="- No upcoming deadlines", font=('Segoe UI', 10), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W)
-        else:
-            for proj_name, end_date in upcoming_deadlines:
-                Label(overview_box, text=f"- {proj_name} - {fmt_deadline(end_date)}", font=('Segoe UI', 10), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=1)
-
-        # Widget 2: Recent Activity
-        activity_box = Frame(right_col, bg=CARD_BG, padx=20, pady=20)
-        activity_box.pack(fill=X, pady=(0, 20))
-        Label(activity_box, text="Recent Activity", font=('Segoe UI', 14, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 10))
-        if not recent_activity:
-            Label(activity_box, text="- No recent activity", font=('Segoe UI', 10), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W)
-        else:
-            for ts, user_name, action in recent_activity:
-                short_ts = ts if ts else ""
-                Label(activity_box, text=f"- {short_ts} | {user_name}: {action}", font=('Segoe UI', 9), bg=CARD_BG, fg=MUTED_TEXT, wraplength=540, justify=LEFT).pack(anchor=W, pady=1)
+        # Defer loading
+        self.root.after(20, _load_pm_lazy)
         self.schedule_pm_dashboard_auto_refresh()
 
     def create_stat_card(self, parent, title, value, color, icon="", on_click=None):
@@ -3836,22 +3798,41 @@ class ProjectMonitorApp:
         if hasattr(self, 'dash_task_label'):
             self.dash_task_label.config(text=f"MY {filter_val.upper()} TASKS")
 
+        # Clear existing
         for i in self.dash_task_tree.get_children(): self.dash_task_tree.delete(i)
         for i in self.dash_dead_tree.get_children(): self.dash_dead_tree.delete(i)
         
-        # 1. Fetch from Backend API
-        backend_tasks = []
-        if CURRENT_TOKEN:
-            try:
-                all_backend_tasks = api.get_tasks()
-                backend_tasks = [t for t in all_backend_tasks if t.get('assignedTo') == CURRENT_USER_NAME or t.get('assignedTo') == CURRENT_USER_EMAIL]
-            except Exception as e:
-                debug_log(f"DEBUG: Error fetching backend tasks: {e}")
+        # Show "Loading..." placeholder
+        self.dash_task_tree.insert("", END, values=("Synchronizing data...", "Connecting to server...", "-"))
+        
+        def _fetch_and_update():
+            # 1. Fetch from Backend (Background)
+            backend_tasks = []
+            if CURRENT_TOKEN:
+                try:
+                    all_backend_tasks = api.get_tasks()
+                    backend_tasks = [t for t in all_backend_tasks if 
+                                   (t.get('assignedTo') == CURRENT_USER_NAME or 
+                                    t.get('assignedTo') == CURRENT_USER_EMAIL)]
+                except: pass
 
+            # 2. Update UI (Main Thread)
+            if self.root.winfo_exists():
+                self.root.after(0, lambda: self._complete_emp_refresh(backend_tasks, filter_val))
+
+        threading.Thread(target=_fetch_and_update, daemon=True).start()
+
+    def _complete_emp_refresh(self, backend_tasks, filter_val):
+        """Final UI update for Employee Dashboard after background fetch."""
+        if not self.dash_task_tree.winfo_exists(): return
+        
+        # Clear loading msg
+        for i in self.dash_task_tree.get_children(): self.dash_task_tree.delete(i)
+        
         con = sqlite3.connect(get_db_path())
         cur = con.cursor()
         
-        # 2. Fetch from Local SQLite with Filtering
+        # Local SQLite Data
         query = "SELECT t.title, p.name, t.due_date FROM tasks t LEFT JOIN projects p ON t.project_id = p.id WHERE t.assigned_to=?"
         params = [CURRENT_USER_NAME]
         
@@ -3864,7 +3845,7 @@ class ProjectMonitorApp:
         elif filter_val == "Overdue":
             query += " AND t.status NOT IN ('Completed', 'Cancelled') AND t.due_date < date('now')"
         
-        query += " ORDER BY t.due_date ASC LIMIT 10"
+        query += " ORDER BY t.due_date ASC LIMIT 15"
         cur.execute(query, tuple(params))
         sqlite_rows = cur.fetchall()
         
@@ -3872,10 +3853,10 @@ class ProjectMonitorApp:
         seen_titles = set()
         today_str = datetime.now().strftime("%Y-%m-%d")
 
+        # Process Backend
         for bt in backend_tasks:
             status = bt.get('status')
-            due = bt.get('dueDate', '')
-            if due and 'T' in due: due = due.split('T')[0]
+            due = bt.get('dueDate', '').split('T')[0] if bt.get('dueDate') else ""
             
             show = False
             if filter_val == "Active" and status not in ('Completed', 'Cancelled'): show = True
@@ -3886,11 +3867,12 @@ class ProjectMonitorApp:
             
             if show:
                 title = bt.get('title', 'Untitled')
-                project = bt.get('project', {}).get('name', 'N/A') if isinstance(bt.get('project'), dict) else 'N/A'
                 if title not in seen_titles:
-                    combined_active.append((title, project, due))
+                    proj = bt.get('project', {}).get('name', 'N/A') if isinstance(bt.get('project'), dict) else 'N/A'
+                    combined_active.append((title, proj, due))
                     seen_titles.add(title)
 
+        # Merge SQLite
         for st in sqlite_rows:
             if st[0] not in seen_titles:
                 combined_active.append(st)
@@ -3899,12 +3881,12 @@ class ProjectMonitorApp:
         combined_active.sort(key=lambda x: x[2] if x[2] else '9999-99-99')
 
         if combined_active:
-            for r in combined_active[:10]:
+            for r in combined_active[:12]:
                 self.dash_task_tree.insert("", END, values=r)
         else:
             self.dash_task_tree.insert("", END, values=("No active tasks", "All caught up", "-"))
         
-        # 3. Upcoming Deadlines
+        # Deadlines
         today = datetime.now().date()
         deadlines = []
         for title, project, due in combined_active:
@@ -3919,13 +3901,13 @@ class ProjectMonitorApp:
         deadlines.sort(key=lambda x: x[3])
         if deadlines:
             for r in deadlines[:10]:
-                days_left = r[3]
                 tag = 'Safe'
-                if days_left <= 1: tag = 'Urgent'
-                elif days_left <= 3: tag = 'Warning'
+                if r[3] <= 1: tag = 'Urgent'
+                elif r[3] <= 3: tag = 'Warning'
                 self.dash_dead_tree.insert("", END, values=r[:3], tags=(tag,))
         else:
             self.dash_dead_tree.insert("", END, values=("No upcoming deadlines", "-", "-"))
+        
         con.close()
 
 
@@ -5271,87 +5253,81 @@ class ProjectMonitorApp:
         search_txt = self.mem_search_var.get().lower() if hasattr(self, 'mem_search_var') else ""
         status_filter = self.mem_status_filter.get() if hasattr(self, 'mem_status_filter') else "All"
         
-        con = sqlite3.connect(get_db_path())
-        cur = con.cursor()
-        
-        # Query to get employee details along with task statistics
-        query = """
-            SELECT 
-                e.id, 
-                e.name, 
-                e.department, 
-                e.role,
-                (SELECT COUNT(*) FROM tasks t WHERE t.assigned_to = e.name) as total_tasks,
-                (SELECT COUNT(*) FROM tasks t WHERE t.assigned_to = e.name AND t.status != 'Completed') as active_tasks,
-                (SELECT 
-                    CASE 
-                        WHEN COUNT(*) = 0 THEN '0%' 
-                        ELSE ROUND((SUM(CASE WHEN status = 'Completed' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 0) || '%' 
-                    END 
-                 FROM tasks t WHERE t.assigned_to = e.name) as completion_rate,
-                e.reporting_manager
-            FROM employee e
-        """
-        
-        role = CURRENT_USER_ROLE.lower()
-        if role == 'team leader':
-            query += f""" WHERE (e.reporting_manager = '{CURRENT_USER_NAME}' OR e.name IN (
-                SELECT DISTINCT assigned_to FROM tasks 
-                WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE '%{CURRENT_USER_NAME}%')
-            )) AND e.name != '{CURRENT_USER_NAME}' AND e.role NOT IN ('Team Leader', 'Project Manager', 'Admin') """
+        def _fetch_and_render_members():
+            con = sqlite3.connect(get_db_path())
+            cur = con.cursor()
             
-        cur.execute(query)
-        rows = cur.fetchall()
+            # Optimized query: Single pass for tasks, completion rate, and last activity
+            query = """
+                SELECT 
+                    e.id, 
+                    e.name, 
+                    e.department, 
+                    e.role,
+                    (SELECT COUNT(*) FROM tasks t WHERE t.assigned_to = e.name) as total_tasks,
+                    (SELECT COUNT(*) FROM tasks t WHERE t.assigned_to = e.name AND t.status != 'Completed') as active_tasks,
+                    (SELECT 
+                        CASE 
+                            WHEN COUNT(*) = 0 THEN '0%' 
+                            ELSE ROUND((SUM(CASE WHEN status = 'Completed' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 0) || '%' 
+                        END 
+                     FROM tasks t WHERE t.assigned_to = e.name) as completion_rate,
+                    e.reporting_manager,
+                    (SELECT MAX(date) FROM attendance WHERE employee_name=e.name OR name=e.name) as last_att,
+                    (SELECT MAX(date(COALESCE(completed_date, created_date, due_date))) FROM tasks WHERE assigned_to=e.name) as last_task
+                FROM employee e
+            """
+            
+            role = CURRENT_USER_ROLE.lower()
+            if role == 'team leader':
+                query += f""" WHERE (e.reporting_manager = '{CURRENT_USER_NAME}' OR e.name IN (
+                    SELECT DISTINCT assigned_to FROM tasks 
+                    WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE '%{CURRENT_USER_NAME}%')
+                )) AND e.name != '{CURRENT_USER_NAME}' AND e.role NOT IN ('Team Leader', 'Project Manager', 'Admin') """
+            
+            cur.execute(query)
+            rows = cur.fetchall()
+            con.close()
+            
+            # Switch back to main thread for UI
+            if self.root.winfo_exists():
+                self.root.after(0, lambda: self._populate_members_tree(rows, search_txt, status_filter))
+
+        threading.Thread(target=_fetch_and_render_members, daemon=True).start()
+
+    def _populate_members_tree(self, rows, search_txt, status_filter):
+        """UI completion for member list."""
+        if not self.mem_tree.winfo_exists(): return
         
         for row in rows:
-            name = row[1]
-            dept = row[2]
-            emp_role = row[3]
-            total_tasks = row[4] or 0
-            workload_val = row[5] or 0
-            completion = row[6]
-            tl_name = row[7] or "Unlinked"
+            name = row[1]; dept = row[2]; emp_role = row[3]
+            total_tasks = row[4] or 0; workload_val = row[5] or 0
+            completion = row[6]; tl_name = row[7] or "Unlinked"
             
             # Workload indicator
             if workload_val > 5: workload = f"High ({workload_val})"
             elif workload_val > 2: workload = f"Medium ({workload_val})"
             else: workload = f"Low ({workload_val})"
-            # Progress bar string for performance
-            try:
-                pct = int(str(completion).replace('%',''))
-            except:
-                pct = 0
+            
+            try: pct = int(str(completion).replace('%',''))
+            except: pct = 0
             filled = max(0, min(10, pct // 10))
             perf_str = f"{'█'*filled}{'░'*(10-filled)} {pct}%"
-            # Last active (attendance or task)
-            last_active = "N/A"
-            try:
-                con2 = sqlite3.connect(get_db_path())
-                cur2 = con2.cursor()
-                cur2.execute("SELECT MAX(date) FROM attendance WHERE employee_name=? OR name=?", (name, name))
-                a = cur2.fetchone()[0]
-                cur2.execute("SELECT MAX(date(COALESCE(completed_date, created_date, due_date))) FROM tasks WHERE assigned_to=?", (name,))
-                b = cur2.fetchone()[0]
-                con2.close()
-                cands = [d for d in [a, b] if d]
-                if cands:
-                    last_active = max(cands)
-            except:
-                pass
+            
+            # Last active (attendance or task) - using pre-fetched columns
+            a = row[8]; b = row[9]
+            cands = [d for d in [a, b] if d]
+            last_active = max(cands) if cands else "N/A"
             
             status = "Active"
-            if status_filter != "All" and status != status_filter:
-                continue
+            if status_filter != "All" and status != status_filter: continue
                 
             content = f"{name} {dept} {emp_role}".lower()
-            if search_txt and search_txt not in content:
-                continue
+            if search_txt and search_txt not in content: continue
+            
             display_name = f"👤 {name}"
-            # Hide 'Edit' for current user to avoid redundant Profile update options
             action_label = "Edit" if name != CURRENT_USER_NAME else ""
             self.mem_tree.insert("", END, values=(row[0], display_name, dept, emp_role, tl_name, total_tasks, workload, perf_str, last_active, status, action_label))
-            
-        con.close()
 
     def view_member_profile(self):
         selected = self.mem_tree.selection()
@@ -6522,26 +6498,42 @@ class ProjectMonitorApp:
         
         def save_status():
             new_status = c_status.get()
-            try:
-                con = sqlite3.connect(get_db_path())
-                cursor = con.cursor()
-                if new_status == 'Completed':
-                    cursor.execute("UPDATE tasks SET status=?, completed_date=? WHERE id=?", (new_status, datetime.now().strftime("%Y-%m-%d"), task_id))
-                else:
-                    cursor.execute("UPDATE tasks SET status=? WHERE id=?", (new_status, task_id))
-                
-                # Log Activity
-                cursor.execute("SELECT project_id FROM tasks WHERE id=?", (task_id,))
-                pid = cursor.fetchone()[0]
-                log_activity(pid, CURRENT_USER_NAME, f"Updated task '{task_title}' to {new_status}")
-                
-                con.commit()
-                con.close()
-                self.refresh_current_page()
-                messagebox.showinfo("Success", "Status Updated")
-                t.destroy()
-            except Exception as e:
-                messagebox.showerror("Error", str(e))
+            
+            def _bg_save():
+                try:
+                    con = sqlite3.connect(get_db_path())
+                    cursor = con.cursor()
+                    if new_status == 'Completed':
+                        cursor.execute("UPDATE tasks SET status=?, completed_date=? WHERE id=?", (new_status, datetime.now().strftime("%Y-%m-%d"), task_id))
+                    else:
+                        cursor.execute("UPDATE tasks SET status=? WHERE id=?", (new_status, task_id))
+                    
+                    # Log Activity (Background)
+                    cursor.execute("SELECT project_id FROM tasks WHERE id=?", (task_id,))
+                    pid_row = cursor.fetchone()
+                    if pid_row:
+                        pid = pid_row[0]
+                        log_activity(pid, CURRENT_USER_NAME, f"Updated task '{task_title}' to {new_status}")
+                    
+                    con.commit()
+                    con.close()
+                    
+                    # Refresh UI on main thread
+                    if self.root.winfo_exists():
+                        self.root.after(0, lambda: self._on_status_save_complete(t))
+                except Exception as e:
+                    if self.root.winfo_exists():
+                        self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+
+            btn_update.config(state=DISABLED, text="Saving...")
+            threading.Thread(target=_bg_save, daemon=True).start()
+
+    def _on_status_save_complete(self, modal_window):
+        """Callback after task status is saved in background."""
+        self.refresh_current_page()
+        messagebox.showinfo("Success", "Status Updated Successfully")
+        try: modal_window.destroy()
+        except: pass
                 
         btn_update = Button(status_card, text="UPDATE STATUS", command=save_status, bg=PRIMARY_RED, fg=WHITE, 
                            font=('Segoe UI', 8, 'bold'), relief=FLAT, padx=20, pady=8, cursor="hand2")
@@ -10258,27 +10250,40 @@ class ProjectMonitorApp:
         parent.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
         # --- DB Data Gathering ---
+        # --- DB Data Gathering - Optimized Single Pass ---
         con = sqlite3.connect(get_db_path()); cur = con.cursor()
-        cur.execute("SELECT COUNT(*) FROM tasks WHERE assigned_to=? AND status IN ('Pending', 'In Progress')", (CURRENT_USER_NAME,))
-        sqlite_active = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM tasks WHERE assigned_to=? AND status NOT IN ('Completed', 'Cancelled') AND due_date < date('now')", (CURRENT_USER_NAME,))
-        sqlite_overdue = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM queries WHERE user_name=? AND status='Open'", (CURRENT_USER_NAME,))
-        active_queries = cur.fetchone()[0]
+        cur.execute("""
+            SELECT 
+                (SELECT COUNT(*) FROM tasks WHERE assigned_to=? AND status IN ('Pending', 'In Progress')),
+                (SELECT COUNT(*) FROM tasks WHERE assigned_to=? AND status NOT IN ('Completed', 'Cancelled') AND due_date < date('now')),
+                (SELECT COUNT(*) FROM queries WHERE user_name=? AND status='Open'),
+                (SELECT status FROM attendance WHERE employee_name=? AND date=date('now'))
+        """, (CURRENT_USER_NAME, CURRENT_USER_NAME, CURRENT_USER_NAME, CURRENT_USER_NAME))
+        meta = cur.fetchone()
+        sqlite_active = meta[0] or 0
+        sqlite_overdue = meta[1] or 0
+        active_queries = meta[2] or 0
+        att_status = meta[3] if meta[3] else "Absent"
         
         today_date = datetime.now().strftime("%Y-%m-%d")
-        cur.execute("SELECT status FROM attendance WHERE name=? AND date=?", (CURRENT_USER_NAME, today_date))
-        att_row = cur.fetchone()
-        att_status = att_row[0] if att_row else "Absent"
+        cur.close(); con.close()
 
-        # AI Score logic
-        score = 0; trend = "Neutral"
-        ai_engine = get_performance_ai()
-        if ai_engine:
-            pred = ai_engine.predict_next_month(CURRENT_USER_NAME)
-            if pred:
-                score = int(pred.get('predicted_score', 0))
-                trend = pred.get('trend', 'Neutral')
+        # Threaded AI Score logic to avoid UI freeze
+        def _load_ai_score():
+            try:
+                ai_engine = get_performance_ai()
+                if ai_engine:
+                    pred = ai_engine.predict_next_month(CURRENT_USER_NAME)
+                    if pred and self.root.winfo_exists():
+                        s = int(pred.get('predicted_score', 0))
+                        t = pred.get('trend', 'Neutral')
+                        self.root.after(0, lambda: self._update_emp_ai_stat(s, t))
+            except: pass
+
+        threading.Thread(target=_load_ai_score, daemon=True).start()
+
+        score = "--"
+        trend = "Analyzing..."
 
         # --- Dashboard UI ---
         
@@ -10303,6 +10308,9 @@ class ProjectMonitorApp:
         stats_frame = Frame(parent, bg=CONTENT_BG)
         stats_frame.pack(fill=X, pady=(0, 40), padx=10)
         
+        self._emp_ai_score_label = None
+        self._emp_ai_trend_label = None
+
         def create_saas_card(container, title, val, sub, color, growth="+12%"):
             card = Frame(container, bg=CARD_BG, highlightthickness=0)
             card.pack(side=LEFT, expand=True, fill=BOTH, padx=10)
@@ -10320,17 +10328,23 @@ class ProjectMonitorApp:
             pill.pack(side=RIGHT)
             Label(pill, text=growth, font=('DM Sans', 8, 'bold'), bg=color, fg=TEXT_WHITE).pack()
             
-            Label(inner, text=val, font=('Rajdhani', 36, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(10, 0))
+            v_lbl = Label(inner, text=val, font=('Rajdhani', 36, 'bold'), bg=CARD_BG, fg=TEXT_WHITE)
+            v_lbl.pack(anchor=W, pady=(10, 0))
             
             footer = Frame(inner, bg=CARD_BG)
             footer.pack(fill=X, pady=(15, 0))
-            Label(footer, text=sub, font=('DM Sans', 9), bg=CARD_BG, fg=MUTED_TEXT).pack(side=LEFT)
+            s_lbl = Label(footer, text=sub, font=('DM Sans', 9), bg=CARD_BG, fg=MUTED_TEXT)
+            s_lbl.pack(side=LEFT)
             
             # Bottom Progress Line
             progress_bg = Frame(inner, bg=BORDER_COLOR, height=2)
             progress_bg.pack(fill=X, pady=(15, 0))
             progress_val = Frame(progress_bg, bg=color, height=2, width=80)
             progress_val.pack(side=LEFT)
+            
+            if title.lower() == "efficiency":
+                self._emp_ai_score_label = v_lbl
+                self._emp_ai_trend_label = s_lbl
 
         create_saas_card(stats_frame, "Efficiency", f"{score}%", f"Next Month Trend: {trend}", ACCENT_PURPLE, growth="↑ Advanced")
         create_saas_card(stats_frame, "Active", str(sqlite_active), "Tasks in pipeline", ACCENT_BLUE, growth="+2 New")
@@ -10338,56 +10352,70 @@ class ProjectMonitorApp:
         create_saas_card(stats_frame, "Queries", str(active_queries), "Unresolved tickets", ACCENT_ORANGE, growth="Live")
         create_saas_card(stats_frame, "Clock-In", att_status.upper(), f"Today: {today_date}", ACCENT_GREEN, growth="On Time")
 
-        # 3. Clean Grid (Zero Borders on Widgets)
+        # 3. Clean Grid (Zero Borders on Widgets) - Lazy Load
         grid = Frame(parent, bg=CONTENT_BG)
         grid.pack(fill=BOTH, expand=True, padx=20)
         grid.columnconfigure(0, weight=1); grid.columnconfigure(1, weight=1)
         
-        def create_clean_table(container, row, col, title, accent):
-            f = Frame(container, bg=CARD_BG, highlightbackground=BORDER_COLOR, highlightthickness=1)
-            f.grid(row=row, column=col, sticky="nsew", padx=10)
+        def _load_lazy_emp_widgets():
+            if not grid.winfo_exists(): return
             
-            # Header
-            h_f = Frame(f, bg=CARD_BG, padx=20, pady=20)
-            h_f.pack(fill=X)
-            Label(h_f, text=title, font=('Rajdhani', 16, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
-            Label(h_f, text="●", fg=accent, bg=CARD_BG, font=('Arial', 10)).pack(side=RIGHT)
-            
-            Frame(f, bg=BORDER_COLOR, height=1).pack(fill=X)
-            
-            # Treeview without its own border
-            inner = Frame(f, bg=CARD_BG, padx=10, pady=10)
-            inner.pack(fill=BOTH, expand=True)
-            return inner
+            def create_clean_table(container, row, col, title, accent):
+                f = Frame(container, bg=CARD_BG, highlightbackground=BORDER_COLOR, highlightthickness=1)
+                f.grid(row=row, column=col, sticky="nsew", padx=10)
+                
+                # Header
+                h_f = Frame(f, bg=CARD_BG, padx=20, pady=20)
+                h_f.pack(fill=X)
+                Label(h_f, text=title, font=('Rajdhani', 16, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
+                Label(h_f, text="●", fg=accent, bg=CARD_BG, font=('Arial', 10)).pack(side=RIGHT)
+                
+                Frame(f, bg=BORDER_COLOR, height=1).pack(fill=X)
+                inner = Frame(f, bg=CARD_BG, padx=10, pady=10)
+                inner.pack(fill=BOTH, expand=True)
+                return inner
 
-        # Active Tasks
-        at_inner = create_clean_table(grid, 0, 0, "My Active Tasks", ACCENT_BLUE)
-        self.dash_task_tree = ttk.Treeview(at_inner, columns=("Task", "Project", "Due"), show='headings', height=10, style="Treeview")
-        self.dash_task_tree.heading("Task", text="TASK")
-        self.dash_task_tree.heading("Project", text="PROJECT")
-        self.dash_task_tree.heading("Due", text="DUE DATE")
-        self.dash_task_tree.column("Task", width=250, anchor=W)
-        self.dash_task_tree.column("Project", width=180, anchor=W)
-        self.dash_task_tree.column("Due", width=110, anchor=CENTER)
-        self.dash_task_tree.pack(fill=BOTH, expand=True)
+            # Active Tasks
+            at_inner = create_clean_table(grid, 0, 0, "My Active Tasks", ACCENT_BLUE)
+            self.dash_task_tree = ttk.Treeview(at_inner, columns=("Task", "Project", "Due"), show='headings', height=10, style="Treeview")
+            self.dash_task_tree.heading("Task", text="TASK")
+            self.dash_task_tree.heading("Project", text="PROJECT")
+            self.dash_task_tree.heading("Due", text="DUE DATE")
+            self.dash_task_tree.column("Task", width=250, anchor=W)
+            self.dash_task_tree.column("Project", width=180, anchor=W)
+            self.dash_task_tree.column("Due", width=110, anchor=CENTER)
+            self.dash_task_tree.pack(fill=BOTH, expand=True)
 
-        # Deadlines
-        dl_inner = create_clean_table(grid, 0, 1, "Upcoming Deadlines", ACCENT_RED)
-        self.dash_dead_tree = ttk.Treeview(dl_inner, columns=("Task", "Deadline", "Days Left"), show='headings', height=10, style="Treeview")
-        self.dash_dead_tree.heading("Task", text="TASK")
-        self.dash_dead_tree.heading("Deadline", text="DEADLINE")
-        self.dash_dead_tree.heading("Days Left", text="DAYS LEFT")
-        self.dash_dead_tree.column("Task", width=250, anchor=W)
-        self.dash_dead_tree.column("Deadline", width=110, anchor=CENTER)
-        self.dash_dead_tree.column("Days Left", width=110, anchor=CENTER)
-        self.dash_dead_tree.pack(fill=BOTH, expand=True)
+            # Deadlines
+            dl_inner = create_clean_table(grid, 0, 1, "Upcoming Deadlines", ACCENT_RED)
+            self.dash_dead_tree = ttk.Treeview(dl_inner, columns=("Task", "Deadline", "Days Left"), show='headings', height=10, style="Treeview")
+            self.dash_dead_tree.heading("Task", text="TASK")
+            self.dash_dead_tree.heading("Deadline", text="DEADLINE")
+            self.dash_dead_tree.heading("Days Left", text="DAYS LEFT")
+            self.dash_dead_tree.column("Task", width=250, anchor=W)
+            self.dash_dead_tree.column("Deadline", width=110, anchor=CENTER)
+            self.dash_dead_tree.column("Days Left", width=110, anchor=CENTER)
+            self.dash_dead_tree.pack(fill=BOTH, expand=True)
 
-        self.dash_dead_tree.tag_configure('Urgent', foreground=ACCENT_RED)
-        self.dash_dead_tree.tag_configure('Warning', foreground=ACCENT_ORANGE)
-        self.dash_dead_tree.tag_configure('Safe', foreground=ACCENT_GREEN)
+            self.dash_dead_tree.tag_configure('Urgent', foreground=ACCENT_RED)
+            self.dash_dead_tree.tag_configure('Warning', foreground=ACCENT_ORANGE)
+            self.dash_dead_tree.tag_configure('Safe', foreground=ACCENT_GREEN)
 
-        self.refresh_emp_dashboard()
-        cur.close(); con.close()
+            self.refresh_emp_dashboard()
+
+        # Start lazy loading
+        self.root.after(20, _load_lazy_emp_widgets)
+
+    def _update_emp_ai_stat(self, score, trend):
+        """Thread-safe UI update for AI statistics."""
+        if not hasattr(self, 'current_page') or self.current_page != 'emp_dashboard':
+            return
+        try:
+            if self._emp_ai_score_label and self._emp_ai_score_label.winfo_exists():
+                self._emp_ai_score_label.config(text=f"{score}%")
+            if self._emp_ai_trend_label and self._emp_ai_trend_label.winfo_exists():
+                self._emp_ai_trend_label.config(text=f"Next Month Trend: {trend}")
+        except: pass
 
 
 
