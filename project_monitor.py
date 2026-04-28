@@ -2084,6 +2084,7 @@ class ProjectMonitorApp:
 
         # --- Data Fetching ---
         upcoming = []
+        if is_tl:
             # Filtered Stats for Team Leader - Optimized
             try:
                 # 1. Total Team Members (Optimized subquery)
