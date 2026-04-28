@@ -1,0 +1,254 @@
+{
+  "employee_summary": {
+    "total_employees": 10,
+    "avg_productivity": 81.56,
+    "top_performers": [
+      {
+        "employee_name": "Henil Patel",
+        "productivity_score": 90.0,
+        "tasks_completed": 8,
+        "attendance_rate": 0.99
+      },
+      {
+        "employee_name": "Henil Patel",
+        "productivity_score": 90.0,
+        "tasks_completed": 8,
+        "attendance_rate": 0.99
+      },
+      {
+        "employee_name": "Jarmil Patel",
+        "productivity_score": 89.0,
+        "tasks_completed": 12,
+        "attendance_rate": 0.99
+      },
+      {
+        "employee_name": "Jarmil Patel",
+        "productivity_score": 89.0,
+        "tasks_completed": 12,
+        "attendance_rate": 0.99
+      },
+      {
+        "employee_name": "Dev Patel",
+        "productivity_score": 86.0,
+        "tasks_completed": 8,
+        "attendance_rate": 0.99
+      }
+    ],
+    "underperformers": [],
+    "performance_distribution": {
+      "excellent": 2,
+      "good": 14,
+      "average": 2,
+      "poor": 0
+    },
+    "department_stats": [
+      {
+        "department": "IT",
+        "count": 9,
+        "avg_score": 73.11111111111111
+      },
+      {
+        "department": "Management",
+        "count": 2,
+        "avg_score": 90.0
+      },
+      {
+        "department": "Product",
+        "count": 6,
+        "avg_score": 79.33333333333333
+      },
+      {
+        "department": "QA",
+        "count": 2,
+        "avg_score": 77.0
+      }
+    ]
+  },
+  "monthly_trends": {
+    "months": [
+      "2025-11",
+      "2025-12",
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04"
+    ],
+    "avg_productivity": [
+      64.67,
+      68.11,
+      71.44,
+      75.0,
+      78.33,
+      81.56
+    ],
+    "total_tasks": [
+      142,
+      140,
+      146,
+      166,
+      158,
+      154
+    ],
+    "attendance_rate": [
+      0.97,
+      0.97,
+      0.98,
+      0.99,
+      0.99,
+      0.99
+    ]
+  },
+  "project_stats": {
+    "total_projects": 4,
+    "status_distribution": {
+      "Delayed": 1,
+      "Ongoing": 3
+    },
+    "priority_distribution": {
+      "High": 2,
+      "Medium": 2
+    },
+    "completion_rate": 0,
+    "overdue_count": 1,
+    "avg_progress": 0,
+    "projects_by_month": [
+      {
+        "month": "2026-03",
+        "count": 2
+      },
+      {
+        "month": "2026-04",
+        "count": 2
+      }
+    ]
+  },
+  "task_stats": {
+    "total_tasks": 18,
+    "status_breakdown": {
+      "Completed": 4,
+      "Delayed": 2,
+      "In Progress": 5,
+      "Pending": 6,
+      "Pending Approval": 1
+    },
+    "priority_breakdown": {
+      "High": 8,
+      "Low": 1,
+      "Medium": 9
+    },
+    "completion_rate": 22.22,
+    "avg_completion_time": 0,
+    "tasks_by_employee": [
+      {
+        "assigned_to": "Himanshu Kotval",
+        "task_count": 3,
+        "completed": 0
+      },
+      {
+        "assigned_to": "Dev Patel",
+        "task_count": 3,
+        "completed": 1
+      },
+      {
+        "assigned_to": "sharavan panchal",
+        "task_count": 2,
+        "completed": 0
+      },
+      {
+        "assigned_to": "Mohit Zinzuwadiya",
+        "task_count": 2,
+        "completed": 1
+      },
+      {
+        "assigned_to": "Jarmil Patel",
+        "task_count": 2,
+        "completed": 2
+      },
+      {
+        "assigned_to": "Jahan xyz",
+        "task_count": 2,
+        "completed": 0
+      },
+      {
+        "assigned_to": "Ayush Patel",
+        "task_count": 2,
+        "completed": 0
+      },
+      {
+        "assigned_to": "krishn shukala",
+        "task_count": 1,
+        "completed": 0
+      },
+      {
+        "assigned_to": "Dhrumil xyz",
+        "task_count": 1,
+        "completed": 0
+      }
+    ],
+    "overdue_tasks": 2
+  },
+  "attendance_stats": {
+    "today_attendance": {
+      "present": 1,
+      "absent": 0,
+      "late": 0
+    },
+    "weekly_trend": [
+      {
+        "date": "2026-04-20",
+        "present": 8,
+        "total": 8
+      },
+      {
+        "date": "2026-04-21",
+        "present": 8,
+        "total": 8
+      },
+      {
+        "date": "2026-04-22",
+        "present": 6,
+        "total": 8
+      },
+      {
+        "date": "2026-04-23",
+        "present": 8,
+        "total": 8
+      },
+      {
+        "date": "2026-04-24",
+        "present": 8,
+        "total": 8
+      },
+      {
+        "date": "2026-04-27",
+        "present": 1,
+        "total": 1
+      }
+    ],
+    "attendance_by_department": [
+      {
+        "department": "IT",
+        "rate": 0.0
+      },
+      {
+        "department": "Management",
+        "rate": 0.0
+      },
+      {
+        "department": "Product",
+        "rate": 0.0
+      },
+      {
+        "department": "QA",
+        "rate": 0.0
+      }
+    ],
+    "avg_attendance_rate": 0
+  },
+  "predictions": {
+    "at_risk_employees": [],
+    "rising_stars": [],
+    "trend_analysis": []
+  },
+  "generated_at": "2026-04-27 22:24:39"
+}

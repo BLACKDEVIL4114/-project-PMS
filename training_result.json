@@ -1,0 +1,10 @@
+{
+    "timestamp": "2026-04-11T22:21:26.297875",
+    "mae": 0.7324447902144754,
+    "mse": 1.4601835640665664,
+    "r2_score": 0.9861859943680324,
+    "accuracy": "99.27%",
+    "buffer_size": 128,
+    "model_type": "LightGBM Regressor",
+    "framework": "LightGBM"
+}
