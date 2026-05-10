@@ -1,0 +1,85 @@
+# ===========================
+# PMS 2.0 - .gitignore
+# ===========================
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual Environments
+env/
+venv/
+.venv/
+.env
+
+# ===========================
+# SECURITY - Never commit these
+# ===========================
+session.json
+remember_me.json
+*.db
+*.sqlite3
+*.db-wal
+*.db-shm
+
+# ML Models - Large binary files
+*.pkl
+*.joblib
+*.h5
+*.hdf5
+Dataset_1.xlsx
+output.txt
+
+# API Keys / Secrets
+.env
+secrets.json
+config.secret.json
+
+# ===========================
+# Debug / Temp Files
+# ===========================
+fix_*.py
+temp_*.py
+debug_*.py
+test_tk.py
+db_inspector.py
+db_reporter.py
+db_report.md
+
+# Backups
+backup_*.db
+
+# Logs
+*.log
+logs/
+
+# ===========================
+# OS / IDE
+# ===========================
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Node / Backend
+node_modules/
+backend/node_modules/
+backend/.env
+
+# Attachments (user-uploaded)
+attachments/
+
+# Qodo / Zencoder AI tools
+.qodo/
+.zencoder/
+.zenflow/

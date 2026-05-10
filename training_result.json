@@ -1,0 +1,13 @@
+{
+    "status": "Success",
+    "type": "LightGBM Regressor",
+    "mae": 3.956,
+    "mse": 22.2313,
+    "r2_score": 0.7288,
+    "cv_r2_mean": 0.6176,
+    "cv_stability": "\u00b10.2568",
+    "accuracy": "63.64%",
+    "records_trained": 54,
+    "framework": "LightGBM",
+    "validation_note": "5-Fold CV & Residual Analysis active"
+}

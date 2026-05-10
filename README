@@ -1,0 +1,198 @@
+<<<<<<< HEAD
+<<<<<<< HEAD
+Project Monitoring System (PMS) - Simple README
+
+1) What this project is
+- A desktop app to plan, assign and track project work.
+- Roles: Project Manager, Team Leader, Team Member, Senior Employee.
+- Shows dashboards, team progress, tasks and reports.
+- New: Team Member can view colleagues’ progress under the same Team Leader (Team Overview tab).
+
+2) How to run
+- Requirements: Python 3.10+ installed.
+- Install dependency: pip install -r requirements.txt
+- Start the app: python login.py
+- Default admin login:
+  - Username: admin
+  - Password: admin
+
+3) First run behavior
+- The app creates employee.db automatically.
+- Seed data (sample projects, members, tasks) is added for demo.
+
+4) Quick role guide
+- Admin / Project Manager: create projects, manage tasks, view reports.
+- Team Leader: assign tasks, view team stats and urgent alerts.
+- Team Member: see own tasks, log time, mark attendance, view Team Overview.
+- Senior Employee: read-only access to dashboards and reports.
+
+5) Main screens
+- Dashboard: key numbers and deadlines.
+- Projects: list, status and progress.
+- Tasks: assign, update and track.
+- Employee Panel (Team Member):
+  - Dashboard, Tasks, Team Overview, My History, Ask Query, Attendance, Timesheets.
+
+6) Optional local API (for HTTP access)
+- Start: python api.py
+- Test: http://localhost:5000/
+- Examples:
+  - /api/projects
+  - /api/tasks
+  - /api/stats/summary
+
+7) Files you may open
+- login.py  → starts the app.
+- project_monitor.py → main UI and logic.
+- api.py → optional Flask API.
+- employee.db → SQLite database file (auto-created).
+- USER_MANUAL.md → detailed step-by-step user guide.
+- README.md → longer, PPT-ready explanation.
+
+8) Troubleshooting
+- If no window appears, run from a terminal: python login.py
+- Make sure Python is installed and added to PATH.
+- If database errors show, delete employee.db to recreate (only if you don’t need existing data).
+- On Windows, some antivirus may block GUI apps. Allow Python if prompted.
+
+9) Security note
+- Passwords are stored using SHA-256 hashing.
+- All data is local to this computer (SQLite).
+
+10) Demo tips
+- Log in with admin/admin to explore all features.
+- For Team Member view, use any sample employee name that exists in employee.db.
+
+Enjoy using PMS!
+=======
+Project Monitoring System (PMS) - Simple README
+
+1) What this project is
+- A desktop app to plan, assign and track project work.
+- Roles: Project Manager, Team Leader, Team Member, Senior Employee.
+- Shows dashboards, team progress, tasks and reports.
+- New: Team Member can view colleagues’ progress under the same Team Leader (Team Overview tab).
+
+2) How to run
+- Requirements: Python 3.10+ installed.
+- Install dependency: pip install -r requirements.txt
+- Start the app: python login.py
+- Default admin login:
+  - Username: admin
+  - Password: admin
+
+3) First run behavior
+- The app creates employee.db automatically.
+- Seed data (sample projects, members, tasks) is added for demo.
+
+4) Quick role guide
+- Admin / Project Manager: create projects, manage tasks, view reports.
+- Team Leader: assign tasks, view team stats and urgent alerts.
+- Team Member: see own tasks, log time, mark attendance, view Team Overview.
+- Senior Employee: read-only access to dashboards and reports.
+
+5) Main screens
+- Dashboard: key numbers and deadlines.
+- Projects: list, status and progress.
+- Tasks: assign, update and track.
+- Employee Panel (Team Member):
+  - Dashboard, Tasks, Team Overview, My History, Ask Query, Attendance, Timesheets.
+
+6) Optional local API (for HTTP access)
+- Start: python api.py
+- Test: http://localhost:5000/
+- Examples:
+  - /api/projects
+  - /api/tasks
+  - /api/stats/summary
+
+7) Files you may open
+- login.py  → starts the app.
+- project_monitor.py → main UI and logic.
+- api.py → optional Flask API.
+- employee.db → SQLite database file (auto-created).
+- USER_MANUAL.md → detailed step-by-step user guide.
+- README.md → longer, PPT-ready explanation.
+
+8) Troubleshooting
+- If no window appears, run from a terminal: python login.py
+- Make sure Python is installed and added to PATH.
+- If database errors show, delete employee.db to recreate (only if you don’t need existing data).
+- On Windows, some antivirus may block GUI apps. Allow Python if prompted.
+
+9) Security note
+- Passwords are stored using SHA-256 hashing.
+- All data is local to this computer (SQLite).
+
+10) Demo tips
+- Log in with admin/admin to explore all features.
+- For Team Member view, use any sample employee name that exists in employee.db.
+
+Enjoy using PMS!
+>>>>>>> b96fbed604722999e824dcb68821c9ab1aad1e5f
+=======
+Project Monitoring System (PMS) - Simple README
+
+1) What this project is
+- A desktop app to plan, assign and track project work.
+- Roles: Project Manager, Team Leader, Team Member, Senior Employee.
+- Shows dashboards, team progress, tasks and reports.
+- New: Team Member can view colleagues’ progress under the same Team Leader (Team Overview tab).
+
+2) How to run
+- Requirements: Python 3.10+ installed.
+- Install dependency: pip install -r requirements.txt
+- Start the app: python login.py
+- Default admin login:
+  - Username: admin
+  - Password: admin
+
+3) First run behavior
+- The app creates employee.db automatically.
+- Seed data (sample projects, members, tasks) is added for demo.
+
+4) Quick role guide
+- Admin / Project Manager: create projects, manage tasks, view reports.
+- Team Leader: assign tasks, view team stats and urgent alerts.
+- Team Member: see own tasks, log time, mark attendance, view Team Overview.
+- Senior Employee: read-only access to dashboards and reports.
+
+5) Main screens
+- Dashboard: key numbers and deadlines.
+- Projects: list, status and progress.
+- Tasks: assign, update and track.
+- Employee Panel (Team Member):
+  - Dashboard, Tasks, Team Overview, My History, Ask Query, Attendance, Timesheets.
+
+6) Optional local API (for HTTP access)
+- Start: python api.py
+- Test: http://localhost:5000/
+- Examples:
+  - /api/projects
+  - /api/tasks
+  - /api/stats/summary
+
+7) Files you may open
+- login.py  → starts the app.
+- project_monitor.py → main UI and logic.
+- api.py → optional Flask API.
+- employee.db → SQLite database file (auto-created).
+- USER_MANUAL.md → detailed step-by-step user guide.
+- README.md → longer, PPT-ready explanation.
+
+8) Troubleshooting
+- If no window appears, run from a terminal: python login.py
+- Make sure Python is installed and added to PATH.
+- If database errors show, delete employee.db to recreate (only if you don’t need existing data).
+- On Windows, some antivirus may block GUI apps. Allow Python if prompted.
+
+9) Security note
+- Passwords are stored using SHA-256 hashing.
+- All data is local to this computer (SQLite).
+
+10) Demo tips
+- Log in with admin/admin to explore all features.
+- For Team Member view, use any sample employee name that exists in employee.db.
+
+Enjoy using PMS!
+>>>>>>> b96fbed604722999e824dcb68821c9ab1aad1e5f

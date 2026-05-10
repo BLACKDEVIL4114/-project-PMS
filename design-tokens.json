@@ -1,0 +1,104 @@
+{
+  "colors": {
+    "primary": {
+      "dark": "#000103",
+      "accent": "#FF312E",
+      "light": "#515052",
+      "lightest": "#FFFFFA",
+      "veryLight": "#FFFFFA"
+    },
+    "backgrounds": {
+      "main": "#333138",
+      "secondary": "#000103",
+      "dark": "#000103",
+      "sidebar": "#000103"
+    },
+    "text": {
+      "main": "#FFFFFA",
+      "muted": "#515052",
+      "inverse": "#000103",
+      "success": "#FF312E",
+      "error": "#FF312E"
+    },
+    "interactive": {
+      "button_primary_bg": "#FF729F",
+      "button_primary_text": "#FFFFFF",
+      "button_primary_hover": "#56CBF9",
+      "button_secondary_bg": "#D3C4D1",
+      "button_secondary_text": "#FF729F",
+      "button_secondary_hover": "#81F4E1"
+    },
+    "forms": {
+      "input_bg": "#FFFFFF",
+      "input_text": "#FF729F",
+      "input_border": "#D3C4D1",
+      "label_text": "#FF729F",
+      "label_bg": "#FFFFFF"
+    },
+    "table": {
+      "header_bg": "#56CBF9",
+      "header_text": "#FFFFFF",
+      "row_bg": "#FFFFFF",
+      "row_text": "#FF729F",
+      "alternate_row_bg": "#D3C4D1",
+      "selected_bg": "#81F4E1",
+      "selected_text": "#FFFFFF"
+    }
+  },
+  "typography": {
+    "fontFamily": "Segoe UI",
+    "sizes": {
+      "h1": {
+        "size": 24,
+        "weight": "bold"
+      },
+      "h2": {
+        "size": 18,
+        "weight": "bold"
+      },
+      "h3": {
+        "size": 14,
+        "weight": "bold"
+      },
+      "label": {
+        "size": 11,
+        "weight": "bold"
+      },
+      "body": {
+        "size": 10,
+        "weight": "regular"
+      },
+      "small": {
+        "size": 12,
+        "weight": "bold"
+      }
+    }
+  },
+  "spacing": {
+    "xs": "4px",
+    "sm": "8px",
+    "md": "12px",
+    "lg": "20px",
+    "xl": "30px"
+  },
+  "components": {
+    "header": {
+      "height": 80,
+      "background": "#FFFFFF",
+      "textColor": "#FF729F",
+      "padding": "0 30px"
+    },
+    "sidebar": {
+      "width": 280,
+      "background": "#56CBF9",
+      "textColor": "#FFFFFF",
+      "buttonHoverBg": "#81F4E1",
+      "buttonHoverText": "#FFFFFF",
+      "buttonActiveBg": "#FF729F",
+      "buttonActiveText": "#FFFFFF"
+    },
+    "contentArea": {
+      "background": "#FFFFFF"
+    }
+  }
+}
