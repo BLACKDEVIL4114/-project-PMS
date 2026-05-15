@@ -66,6 +66,8 @@ def format_exception_details(exc, tb=None):
 
 
 def show_detailed_error(title, context, exc, tb=None, parent=None):
+    if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+        return
     summary, details = format_exception_details(exc, tb)
     ui_logger.error("%s\n%s", context, details)
     message = f"{context}\n\n{summary}\n\nFull details were written to the logs folder."
@@ -136,6 +138,8 @@ def run_login():
         just after login_window.destroy() is called on successful login.
         All other real errors are still shown to the user.
         """
+        if issubclass(exc_type, (KeyboardInterrupt, SystemExit)):
+            return
         msg = str(exc_val)
         if 'invalid command name' in msg or 'application has been destroyed' in msg:
             # Stale after() callback — safe to ignore
@@ -287,14 +291,27 @@ def run_login():
         _resize_job = login_window.after(180, render_sidebar_background)
 
     sidebar.bind("<Configure>", _on_sidebar_resize)
-    login_window.bind("<Configure>", lambda _e: (
-        sidebar.place_configure(relwidth=0.5, relheight=1.0),
-        canvas.place_configure(relwidth=1.0, relheight=1.0)
-    ))
 
-    # 2. Right Main Area (Login Form) — takes right 50%
+    # 2. Right Main Area (Login Form)
     main_area = Canvas(login_window, bg=BG_DARK, highlightthickness=0)
     main_area.place(relx=0.5, rely=0, relwidth=0.5, relheight=1.0)
+
+    def update_shell_layout(_event=None):
+        total_w = max(login_window.winfo_width(), window_width)
+
+        if total_w >= 1600:
+            right_ratio = 0.48
+        elif total_w >= 1350:
+            right_ratio = 0.52
+        elif total_w >= 1150:
+            right_ratio = 0.57
+        else:
+            right_ratio = 0.62
+
+        left_ratio = 1.0 - right_ratio
+        sidebar.place_configure(relx=0, rely=0, relwidth=left_ratio, relheight=1.0)
+        canvas.place_configure(relx=0, rely=0, relwidth=1.0, relheight=1.0)
+        main_area.place_configure(relx=left_ratio, rely=0, relwidth=right_ratio, relheight=1.0)
 
     def draw_grid():
         w = main_area.winfo_width()
@@ -305,11 +322,11 @@ def run_login():
 
         state["last_grid_size"] = (w, h)
         main_area.delete("grid")
-        gap = 35 # Adjusted gap for closer match to image
+        gap = 44
         for i in range(0, w, gap):
-            main_area.create_line(i, 0, i, h, fill=CARD_BG, tags="grid") # Subtle navy grid
+            main_area.create_line(i, 0, i, h, fill="#2a3155", tags="grid")
         for j in range(0, h, gap):
-            main_area.create_line(0, j, w, j, fill=CARD_BG, tags="grid")
+            main_area.create_line(0, j, w, j, fill="#2a3155", tags="grid")
 
     def queue_grid_redraw(_event=None):
         nonlocal _grid_job
@@ -320,61 +337,62 @@ def run_login():
     main_area.bind("<Configure>", queue_grid_redraw)
 
     login_card = Frame(main_area, bg=BG_DARK)
-    login_card.place(relx=0.5, rely=0.5, anchor=CENTER)
+    login_card.place(x=36, rely=0.1, anchor=NW)
 
     # ── PMS 2.0 Logo / Brand Header ──
     brand_frame = Frame(login_card, bg=BG_DARK)
-    brand_frame.pack(anchor=W, pady=(0, 20))
+    brand_frame.pack(anchor=W, pady=(0, 16))
 
     # Red "P" badge (Solid square style)
-    badge = Label(brand_frame, text="P", font=('Segoe UI', 15, 'bold'),
+    badge = Label(brand_frame, text="P", font=('Segoe UI', 14, 'bold'),
                   bg=PRIMARY_RED, fg=WHITE, width=2, height=1)
-    badge.pack(side=LEFT, padx=(0, 15))
+    badge.pack(side=LEFT, padx=(0, 14))
 
     brand_text = Frame(brand_frame, bg=BG_DARK)
     brand_text.pack(side=LEFT)
-    Label(brand_text, text="PMS 2.0", font=('Segoe UI', 16, 'bold'),
+    Label(brand_text, text="PMS 2.0", font=('Segoe UI', 15, 'bold'),
           bg=BG_DARK, fg=WHITE).pack(anchor=W)
-    Label(brand_text, text="Project Monitor", font=('Segoe UI', 10),
+    Label(brand_text, text="Project Monitor", font=('Segoe UI', 9),
           bg=BG_DARK, fg=TEXT_SECONDARY).pack(anchor=W)
 
     # Header
-    lbl_welcome = Label(login_card, text="Employee Portal", font=('Segoe UI', 42, 'bold'), bg=BG_DARK, fg=WHITE)
-    lbl_welcome.pack(pady=(0, 5), anchor=W)
+    lbl_welcome = Label(login_card, text="Employee Portal", font=('Segoe UI', 40, 'bold'), bg=BG_DARK, fg=WHITE, justify=LEFT)
+    lbl_welcome.pack(pady=(0, 10), anchor=W)
 
-    lbl_sub = Label(login_card, text="Access your tasks and queries.", font=('Segoe UI', 13), bg=BG_DARK, fg=TEXT_SECONDARY)
-    lbl_sub.pack(pady=(0, 35), anchor=W)
+    lbl_sub = Label(login_card, text="Access your tasks and queries.", font=('Segoe UI', 12), bg=BG_DARK, fg=TEXT_SECONDARY, justify=LEFT)
+    lbl_sub.pack(pady=(0, 26), anchor=W)
 
     # Input Fields Helper
     def create_input(parent, label_text, is_password=False):
-        Label(parent, text=label_text.upper(), font=('Segoe UI', 10, 'bold'), bg=BG_DARK, fg=TEXT_SECONDARY).pack(anchor=W, pady=(0, 10))
+        Label(parent, text=label_text.upper(), font=('Segoe UI', 9, 'bold'), bg=BG_DARK, fg=TEXT_SECONDARY).pack(anchor=W, pady=(0, 8))
         
         # Entry container for border
-        entry_frame = Frame(parent, bg=INPUT_BG, highlightbackground=BORDER_COLOR, highlightthickness=1, bd=0)
-        entry_frame.pack(fill=X, pady=(0, 20))
+        entry_frame = Frame(parent, bg="#ffffff", height=56, highlightbackground=BORDER_COLOR, highlightthickness=1, bd=0)
+        entry_frame.pack(fill=X, pady=(0, 16))
+        entry_frame.pack_propagate(False)
         
-        ph_map = {"First Name": "Enter your email or first name", "Password": "Enter your password"}
+        ph_map = {"First Name": "Enter your first name", "Password": "Enter your password"}
         placeholder = ph_map.get(label_text, f"Enter your {label_text.lower()}")
         
-        entry = Entry(entry_frame, font=('Segoe UI', 12), bg=INPUT_BG, fg=WHITE, insertbackground=WHITE, relief=FLAT, width=45)
+        entry = Entry(entry_frame, font=('Segoe UI', 11), bg="#ffffff", fg="#0f172a", insertbackground="#0f172a", relief=FLAT, width=45)
         entry.insert(0, placeholder)
-        entry.config(fg=MUTED_TEXT) # Muted placeholder color
+        entry.config(fg="#94a3b8") # Muted placeholder color
         entry._placeholder = placeholder
         entry._is_password = is_password
 
         def _ph_in(e, ent=entry):
             if ent.get() == ent._placeholder:
                 ent.delete(0, END)
-                ent.config(fg=WHITE)
+                ent.config(fg="#0f172a")
                 if ent._is_password:
                     ent.config(show="•")
 
         def _ph_out(e, ent=entry):
             if ent.get() == "":
-                ent.config(fg=MUTED_TEXT, show="")
+                ent.config(fg="#94a3b8", show="")
                 ent.insert(0, ent._placeholder)
             else:
-                ent.config(fg=WHITE)
+                ent.config(fg="#0f172a")
 
         entry.bind("<FocusIn>", _ph_in)
         entry.bind("<FocusOut>", _ph_out)
@@ -391,16 +409,16 @@ def run_login():
                     btn_toggle.config(text='👁️‍🗨️')
             
             # Lock icon and Eye icon container
-            icons_frame = Frame(entry_frame, bg=INPUT_BG)
-            icons_frame.pack(side=RIGHT, padx=10)
+            icons_frame = Frame(entry_frame, bg="#ffffff")
+            icons_frame.pack(side=RIGHT, padx=(8, 14), pady=10)
             
-            btn_toggle = Button(icons_frame, text="👁️", command=toggle_pass, bg=INPUT_BG, fg=MUTED_TEXT, relief=FLAT, bd=0, cursor="hand2", font=("Segoe UI", 12))
+            btn_toggle = Button(icons_frame, text="👁️", command=toggle_pass, bg="#ffffff", fg="#94a3b8", relief=FLAT, bd=0, cursor="hand2", font=("Segoe UI", 12))
             btn_toggle.pack(side=RIGHT)
             
-            lbl_lock = Label(icons_frame, text="🔒", bg=INPUT_BG, fg=MUTED_TEXT, font=("Segoe UI", 12))
+            lbl_lock = Label(icons_frame, text="🔒", bg="#ffffff", fg="#94a3b8", font=("Segoe UI", 12))
             lbl_lock.pack(side=RIGHT, padx=(0, 5))
             
-        entry.pack(side=LEFT, padx=15, pady=12, fill=X, expand=True)
+        entry.pack(side=LEFT, padx=(18, 12), pady=14, fill=X, expand=True)
         
         # Focus border effects
         def on_focus_in(e):
@@ -446,26 +464,26 @@ def run_login():
 
     # Toggle Buttons Frame
     toggle_frame = Frame(login_card, bg="#2d3555", padx=2, pady=2)
-    toggle_frame.pack(fill=X, pady=(0, 35))
+    toggle_frame.pack(fill=X, pady=(0, 28))
 
     # Grid for 3 buttons
     toggle_frame.grid_columnconfigure(0, weight=1)
     toggle_frame.grid_columnconfigure(1, weight=1)
     toggle_frame.grid_columnconfigure(2, weight=1)
 
-    btn_employee = Button(toggle_frame, text="Employee", font=('Segoe UI', 11, 'bold'), 
+    btn_employee = Button(toggle_frame, text="Employee", font=('Segoe UI', 10, 'bold'), 
                          bg=PRIMARY_RED, fg=WHITE, relief=FLAT, command=switch_to_employee,
-                         bd=0, pady=10, cursor="hand2")
+                         bd=0, pady=8, cursor="hand2")
     btn_employee.grid(row=0, column=0, sticky="ew")
 
-    btn_tl = Button(toggle_frame, text="Team Leader", font=('Segoe UI', 11), 
+    btn_tl = Button(toggle_frame, text="Team Leader", font=('Segoe UI', 10), 
                          bg="#2d3555", fg=TEXT_SECONDARY, relief=FLAT, command=switch_to_tl,
-                         bd=0, pady=10, cursor="hand2")
+                         bd=0, pady=8, cursor="hand2")
     btn_tl.grid(row=0, column=1, sticky="ew")
 
-    btn_manager = Button(toggle_frame, text="Manager", font=('Segoe UI', 11), 
+    btn_manager = Button(toggle_frame, text="Manager", font=('Segoe UI', 10), 
                         bg="#2d3555", fg=TEXT_SECONDARY, relief=FLAT, command=switch_to_manager,
-                        bd=0, pady=10, cursor="hand2")
+                        bd=0, pady=8, cursor="hand2")
     btn_manager.grid(row=0, column=2, sticky="ew")
 
     username_entry = create_input(login_card, "First Name")
@@ -473,18 +491,37 @@ def run_login():
 
     # Remember Me + Forgot Password row
     rem_row = Frame(login_card, bg=BG_DARK)
-    rem_row.pack(fill=X, pady=(0, 20))
+    rem_row.pack(fill=X, pady=(2, 20))
 
     remember_var = BooleanVar()
     chk_remember = Checkbutton(rem_row, text="REMEMBER ME", variable=remember_var, 
                               bg=BG_DARK, fg=WHITE, selectcolor=BG_DARK, 
                               activebackground=BG_DARK, activeforeground=WHITE,
-                              font=('Segoe UI', 10, 'bold'), bd=0, highlightthickness=0)
+                              font=('Segoe UI', 9, 'bold'), bd=0, highlightthickness=0)
     chk_remember.pack(side=LEFT)
 
-    Button(rem_row, text="Forgot Password?", font=("Segoe UI", 11), bg=BG_DARK, fg=LINK_BLUE, 
+    forgot_btn = Button(rem_row, text="Forgot Password?", font=("Segoe UI", 10), bg=BG_DARK, fg=LINK_BLUE, 
            bd=0, activebackground=BG_DARK, activeforeground=LINK_BLUE, cursor='hand2', 
-           command=lambda: forgot_password()).pack(side=RIGHT)
+           command=lambda: forgot_password())
+    forgot_btn.pack(side=RIGHT, pady=(0, 1))
+
+    def update_login_layout(_event=None):
+        main_w = max(main_area.winfo_width(), 640)
+        main_h = max(main_area.winfo_height(), 760)
+
+        card_width = min(max(main_w - 150, 500), 680)
+        title_font = 40 if card_width >= 640 else 36 if card_width >= 560 else 32
+        subtitle_wrap = max(card_width - 24, 360)
+        button_pad = 10 if card_width >= 560 else 9
+        top_offset = 0.12 if main_h >= 860 else 0.1
+
+        side_gutter = 36 if main_w >= 760 else 24
+        login_card.place_configure(x=side_gutter, rely=top_offset, anchor=NW, width=card_width)
+        lbl_welcome.config(font=('Segoe UI', title_font, 'bold'), wraplength=card_width)
+        lbl_sub.config(wraplength=subtitle_wrap)
+
+        for button in (btn_employee, btn_tl, btn_manager):
+            button.config(pady=button_pad)
 
     # Auto-fill if remembered
     try:
@@ -541,7 +578,8 @@ def run_login():
         password = password_entry.get()
 
         # Ignore placeholders
-        if username == "Enter your email or first name": username = ""
+        if username == getattr(username_entry, "_placeholder", "Enter your first name"):
+            username = ""
         if password == "Enter your password": password = ""
 
         if username == '' or password == '':
@@ -803,8 +841,16 @@ def run_login():
         
         s = Toplevel(login_window)
         s.title(f"PMS 2.0 - {target_role} Registration")
-        s.geometry("1000x900")
-        s.config(bg="#111827") 
+        
+        # Center the window on screen
+        win_w = 900
+        win_h = 800
+        scr_w = s.winfo_screenwidth()
+        scr_h = s.winfo_screenheight()
+        x = int((scr_w/2) - (win_w/2))
+        y = int((scr_h/2) - (win_h/2))
+        s.geometry(f"{win_w}x{win_h}+{x}+{y}")
+        s.config(bg=BG_DARK) 
         s.resizable(True, True)
         
         try:
@@ -812,48 +858,54 @@ def run_login():
         except:
             pass
             
-        main_canvas = Canvas(s, bg="#111827", highlightthickness=0)
+        main_canvas = Canvas(s, bg=BG_DARK, highlightthickness=0)
         v_scroll = ttk.Scrollbar(s, orient=VERTICAL, command=main_canvas.yview)
         
-        scroll_frame = Frame(main_canvas, bg="#111827")
+        scroll_frame = Frame(main_canvas, bg=BG_DARK)
         scroll_frame.bind("<Configure>", lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all")))
         
-        main_canvas.create_window((0, 0), window=scroll_frame, anchor="nw", width=1000)
+        # Center the scroll_frame in the canvas with width 800
+        canvas_window = main_canvas.create_window((450, 0), window=scroll_frame, anchor="n", width=800)
+        
+        def on_canvas_resize(e):
+            main_canvas.coords(canvas_window, e.width / 2, 0)
+            
+        main_canvas.bind("<Configure>", on_canvas_resize)
         main_canvas.configure(yscrollcommand=v_scroll.set)
         
         main_canvas.pack(side=LEFT, fill=BOTH, expand=True)
         v_scroll.pack(side=RIGHT, fill=Y)
 
-        card = Frame(scroll_frame, bg="#1f2937", padx=30, pady=20, highlightbackground="#374151", highlightthickness=1)
+        card = Frame(scroll_frame, bg=CARD_BG, padx=30, pady=20, highlightbackground=BORDER_COLOR, highlightthickness=1)
         card.pack(pady=20, padx=20, expand=True)
         
-        top_header = Frame(card, bg="#1f2937")
+        top_header = Frame(card, bg=CARD_BG)
         top_header.pack(fill=X, pady=(0, 15))
         
-        logo_frame = Frame(top_header, bg="#1f2937")
+        logo_frame = Frame(top_header, bg=CARD_BG)
         logo_frame.pack(side=LEFT)
         Label(logo_frame, text=" P ", font=('Segoe UI', 12, 'bold'), bg="#ef4444", fg="white", padx=6, pady=3).pack(side=LEFT, padx=(0, 10))
         
-        brand_info = Frame(logo_frame, bg="#1f2937")
+        brand_info = Frame(logo_frame, bg=CARD_BG)
         brand_info.pack(side=LEFT)
-        Label(brand_info, text="PMS 2.0", font=('Segoe UI', 12, 'bold'), bg="#1f2937", fg="white").pack(anchor=W)
-        Label(brand_info, text="Project Monitor", font=('Segoe UI', 9), bg="#1f2937", fg="#9ca3af").pack(anchor=W)
+        Label(brand_info, text="PMS 2.0", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg="white").pack(anchor=W)
+        Label(brand_info, text="Project Monitor", font=('Segoe UI', 9), bg=CARD_BG, fg="#9ca3af").pack(anchor=W)
         
         badge_text = f"• {target_role} REGISTRATION"
         badge = Label(top_header, text=badge_text, font=('Segoe UI', 9, 'bold'), bg="#311b1e", fg="#ef4444", 
                      padx=12, pady=6, highlightbackground="#ef4444", highlightthickness=1)
         badge.pack(side=RIGHT)
         
-        Label(card, text="Create Account", font=('Segoe UI', 24, 'bold'), bg="#1f2937", fg="white").pack(anchor=W, pady=(0, 5))
-        Label(card, text="Fill in your details to get started with PMS 2.0", font=('Segoe UI', 11), bg="#1f2937", fg="#9ca3af").pack(anchor=W, pady=(0, 20))
+        Label(card, text="Create Account", font=('Segoe UI', 24, 'bold'), bg=CARD_BG, fg="white").pack(anchor=W, pady=(0, 5))
+        Label(card, text="Fill in your details to get started with PMS 2.0", font=('Segoe UI', 11), bg=CARD_BG, fg="#9ca3af").pack(anchor=W, pady=(0, 20))
         
-        form_frame = Frame(card, bg="#1f2937")
+        form_frame = Frame(card, bg=CARD_BG)
         form_frame.pack(fill=X)
         form_frame.grid_columnconfigure(0, weight=1)
         form_frame.grid_columnconfigure(1, weight=1)
         
         def mk_input_v2(parent, label_text, r, c, icon="👤", show=None, placeholder=""):
-            Label(parent, text=label_text.upper(), font=('Segoe UI', 9, 'bold'), bg="#1f2937", fg="#9ca3af", anchor=W).grid(row=r, column=c, sticky="w", padx=10, pady=(10, 5))
+            Label(parent, text=label_text.upper(), font=('Segoe UI', 9, 'bold'), bg=CARD_BG, fg="#9ca3af", anchor=W).grid(row=r, column=c, sticky="w", padx=10, pady=(10, 5))
             container = Frame(parent, bg="white", height=45, highlightbackground="#d1d5db", highlightthickness=1)
             container.grid(row=r+1, column=c, sticky="ew", padx=10, pady=(0, 5))
             container.grid_propagate(False)
@@ -925,15 +977,15 @@ def run_login():
                 messagebox.showerror("System Error", str(e), parent=s)
 
         reg_btn = Button(card, text="CREATE ACCOUNT", command=do_signup, 
-                        bg="#10b981", fg="white", font=('Segoe UI', 12, 'bold'), 
+                        bg=PRIMARY_RED, fg="white", font=('Segoe UI', 12, 'bold'), 
                         relief=FLAT, cursor="hand2", pady=15)
         reg_btn.pack(fill=X)
         
-        footer_frame = Frame(card, bg="#1f2937")
+        footer_frame = Frame(card, bg=CARD_BG)
         footer_frame.pack(pady=(15, 0))
-        Label(footer_frame, text="Already have an account?", font=('Segoe UI', 10), bg="#1f2937", fg="#9ca3af").pack(side=LEFT)
-        Button(footer_frame, text="Sign in", font=('Segoe UI', 10, 'italic'), bg="#1f2937", fg="#63b3ed", 
-               bd=0, activebackground="#1f2937", activeforeground="#63b3ed", cursor='hand2', 
+        Label(footer_frame, text="Already have an account?", font=('Segoe UI', 10), bg=CARD_BG, fg="#9ca3af").pack(side=LEFT)
+        Button(footer_frame, text="Sign in", font=('Segoe UI', 10, 'italic'), bg=CARD_BG, fg=LINK_BLUE, 
+               bd=0, activebackground=CARD_BG, activeforeground=LINK_BLUE, cursor='hand2', 
                command=s.destroy).pack(side=LEFT, padx=5)
 
     def on_enter(e):
@@ -941,9 +993,9 @@ def run_login():
     def on_leave(e):
         login_btn.config(bg=PRIMARY_RED)
 
-    login_btn = Button(login_card, text='SIGN IN', font=('Segoe UI', 14, 'bold'), bg=PRIMARY_RED, fg=WHITE, activebackground=PRIMARY_RED_DARK, activeforeground=WHITE, 
+    login_btn = Button(login_card, text='SIGN IN', font=('Segoe UI', 13, 'bold'), bg=PRIMARY_RED, fg=WHITE, activebackground=PRIMARY_RED_DARK, activeforeground=WHITE, 
                        relief=FLAT, cursor='hand2', command=login, bd=0)
-    login_btn.pack(fill=X, pady=(15, 0), ipady=15)
+    login_btn.pack(fill=X, pady=(14, 0), ipady=13)
     login_btn.bind("<Enter>", on_enter)
     login_btn.bind("<Leave>", on_leave)
 
@@ -971,13 +1023,18 @@ def run_login():
     login_window.bind("<Left>", _cycle_role)
     login_window.bind("<Right>", _cycle_role)
 
-    signup_btn = Button(login_card, text="New Employee? Create Account", font=("Segoe UI", 11), bg=BG_DARK, fg=LINK_BLUE, 
+    signup_btn = Button(login_card, text="New Employee? Create Account", font=("Segoe UI", 10), bg=BG_DARK, fg=LINK_BLUE, 
            bd=0, activebackground=BG_DARK, activeforeground=LINK_BLUE, cursor='hand2', 
            command=open_signup)
-    signup_btn.pack(pady=(15, 0))
+    signup_btn.pack(pady=(14, 0))
 
+    login_window.bind("<Configure>", update_shell_layout, add="+")
+    main_area.bind("<Configure>", update_login_layout, add="+")
+
+    login_window.after(0, update_shell_layout)
     login_window.after(0, lambda: render_sidebar_background(force=True))
     login_window.after(0, draw_grid)
+    login_window.after(0, update_login_layout)
 
     login_window.mainloop()
     return state["action"]

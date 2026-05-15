@@ -4,12 +4,33 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Team Intelligence Analytics — PMS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.6);
+      --accent-color: #ef4444;
+      --accent-hover: #dc2626;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border-color: rgba(255, 255, 255, 0.07);
+      --grid-color: rgba(255, 255, 255, 0.03);
+      --sidebar-bg: #0b1329;
+      --topbar-bg: #0b1329;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #1a1a2e;
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg-color);
+      background-image: 
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+      background-size: 35px 35px;
+      color: var(--text-main);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -17,203 +38,237 @@
 
     /* ── Top Nav ── */
     .topbar {
-      background: #000103;
-      border-bottom: 1px solid rgba(86,203,249,.15);
+      background: var(--topbar-bg);
+      border-bottom: 1px solid var(--border-color);
       padding: 0 28px;
-      height: 56px;
+      height: 64px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-shrink: 0;
+      backdrop-filter: blur(10px);
     }
     .topbar-left { display: flex; align-items: center; gap: 14px; }
     .pms-logo {
-      background: #FF312E;
+      background: var(--accent-color);
       color: #fff;
-      font-size: 13px;
+      font-size: 16px;
       font-weight: 700;
-      padding: 6px 10px;
+      padding: 6px 12px;
       border-radius: 6px;
       letter-spacing: .05em;
     }
-    .pms-title { font-size: 15px; font-weight: 700; color: #FFFFFA; }
-    .pms-sub   { font-size: 11px; color: #515052; }
-    .topbar-right { display: flex; align-items: center; gap: 20px; }
+    .pms-title { font-size: 16px; font-weight: 600; color: var(--text-main); }
+    .pms-sub   { font-size: 11px; color: var(--text-muted); }
+    
+    .topbar-right { display: flex; align-items: center; gap: 24px; }
     .topbar-right a {
-      font-size: 12px; color: #515052; text-decoration: none; transition: color .15s;
+      font-size: 13px; color: var(--text-muted); text-decoration: none; transition: color .15s;
     }
-    .topbar-right a:hover { color: #56CBF9; }
-    .topbar-right a.active { color: #56CBF9; font-weight: 600; }
+    .topbar-right a:hover { color: var(--text-main); }
+    .topbar-right a.active { color: var(--accent-color); font-weight: 600; }
+    
     .leader-badge {
       display: flex; align-items: center; gap: 8px;
-      background: rgba(86,203,249,.08);
-      border: 1px solid rgba(86,203,249,.2);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
       border-radius: 20px;
-      padding: 4px 12px 4px 8px;
+      padding: 4px 14px;
     }
     .leader-dot {
-      width: 6px; height: 6px; border-radius: 50%; background: #56CBF9;
+      width: 6px; height: 6px; border-radius: 50%; background: #22c55e;
     }
-    .leader-name { font-size: 12px; color: #56CBF9; font-weight: 600; }
+    .leader-name { font-size: 12px; color: var(--text-main); font-weight: 600; }
 
     /* ── Body Layout ── */
     .body { display: flex; flex: 1; overflow: hidden; }
 
     /* ── Sidebar Nav ── */
     .sidenav {
-      width: 200px;
+      width: 220px;
       flex-shrink: 0;
-      background: #000103;
-      border-right: 1px solid rgba(86,203,249,.1);
-      padding: 20px 10px;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border-color);
+      padding: 24px 12px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
+      backdrop-filter: blur(10px);
     }
     .nav-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 9px 12px;
-      border-radius: 7px;
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
       cursor: pointer;
-      font-size: 12px; font-weight: 600; color: #515052;
-      border: 1px solid transparent;
-      transition: all .15s;
+      font-size: 13px; font-weight: 500; color: var(--text-muted);
+      transition: all .15s ease;
       text-decoration: none;
     }
-    .nav-item:hover { background: rgba(86,203,249,.06); color: #FFFFFA; }
-    .nav-item.active {
-      background: rgba(255,49,46,.12);
-      border-color: rgba(255,49,46,.3);
-      color: #FF729F;
+    .nav-item:hover { 
+      background: rgba(255, 255, 255, 0.03); 
+      color: var(--text-main);
     }
-    .nav-icon { font-size: 13px; width: 16px; text-align: center; }
+    .nav-item.active {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--accent-color);
+      font-weight: 600;
+    }
+    .nav-icon { font-size: 14px; width: 16px; text-align: center; }
 
     /* ── Main Content ── */
-    .content { flex: 1; background: #1e2035; padding: 28px; overflow-y: auto; }
+    .content { 
+      flex: 1; 
+      padding: 32px; 
+      overflow-y: auto;
+      background: transparent;
+    }
 
-    .breadcrumb { font-size: 11px; color: #515052; margin-bottom: 16px; }
-    .breadcrumb span { color: #56CBF9; }
+    .breadcrumb { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+    .breadcrumb span { color: var(--text-main); }
 
-    .page-title { font-size: 24px; font-weight: 700; color: #FFFFFA; margin-bottom: 20px; }
-    .page-title em { font-style: normal; font-size: 13px; color: #56CBF9; font-weight: 600; margin-left: 10px; }
+    .page-title { font-size: 28px; font-weight: 700; color: var(--text-main); margin-bottom: 24px; }
+    .page-title em { font-style: normal; font-size: 14px; color: var(--accent-color); font-weight: 500; margin-left: 10px; }
 
     /* ── Analytics Panel ── */
     .analytics {
       display: flex;
-      gap: 0;
-      background: #252b40;
-      border-radius: 12px;
-      overflow: hidden;
-      border: 1px solid rgba(86,203,249,.1);
-      min-height: 480px;
+      gap: 24px;
+      min-height: 520px;
     }
 
     /* Member list */
     .member-list {
-      width: 260px;
+      width: 300px;
       flex-shrink: 0;
-      background: #000103;
-      border-right: 1px solid rgba(86,203,249,.1);
-      padding: 20px 14px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 24px 16px;
       display: flex;
       flex-direction: column;
-      gap: 5px;
+      gap: 8px;
+      backdrop-filter: blur(20px);
     }
-    .ml-title { font-size: 15px; font-weight: 700; color: #FFFFFA; margin-bottom: 2px; }
-    .ml-sub   { font-size: 11px; color: #515052; margin-bottom: 14px; }
+    .ml-title { font-size: 18px; font-weight: 700; color: var(--text-main); }
+    .ml-sub   { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
 
     .mrow {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 12px; border-radius: 8px; cursor: pointer;
-      border: 1px solid transparent; transition: all .15s;
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px; border-radius: 10px; cursor: pointer;
+      border: 1px solid transparent; 
+      background: rgba(255, 255, 255, 0.02);
+      transition: all .2s ease;
     }
-    .mrow:hover { background: rgba(86,203,249,.06); border-color: rgba(86,203,249,.12); }
-    .mrow.on   { background: rgba(255,49,46,.1);   border-color: rgba(255,49,46,.35); }
+    .mrow:hover { 
+      background: rgba(255, 255, 255, 0.05); 
+      border-color: rgba(255, 255, 255, 0.05);
+    }
+    .mrow.on { 
+      background: rgba(239, 68, 68, 0.08);   
+      border-color: rgba(239, 68, 68, 0.3); 
+    }
 
     .av {
-      width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+      width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      font-size: 14px; font-weight: 700;
-      border: 2px solid rgba(255,255,255,.1);
+      font-size: 14px; font-weight: 600;
+      border: 1px solid rgba(255, 255, 255, 0.1);
     }
-    .av-d { background: #7a3a00; color: #FFB347; }
-    .av-a { background: #0a4a2f; color: #56CBF9; }
-    .av-s { background: #1a1060; color: #81F4E1; }
-    .av-k { background: #0a4a2f; color: #56CBF9; }
+    .av-d { background: rgba(245, 158, 11, 0.2); color: #fb923c; }
+    .av-a { background: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+    .av-s { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+    .av-k { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
 
     .minfo { flex: 1; min-width: 0; }
-    .mname { font-size: 13px; font-weight: 600; color: #FFFFFA; }
-    .mrole { font-size: 11px; color: #515052; margin-top: 1px; }
+    .mname { font-size: 14px; font-weight: 600; color: var(--text-main); }
+    .mrole { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
     .pill {
-      font-size: 10px; font-weight: 700; padding: 3px 9px;
-      border-radius: 20px; letter-spacing: .04em; flex-shrink: 0;
+      font-size: 10px; font-weight: 700; padding: 3px 8px;
+      border-radius: 6px; letter-spacing: .04em; flex-shrink: 0;
     }
-    .pm { background: #4a1a00; color: #FFB347; border: 1px solid #7a3a00; }
-    .pl { background: #003020; color: #56CBF9; border: 1px solid #005040; }
-    .arr { font-size: 10px; color: #515052; margin-left: 2px; transition: color .15s; }
-    .mrow.on .arr { color: #FF312E; }
+    .pm { background: rgba(245, 158, 11, 0.1); color: #fb923c; border: 1px solid rgba(245, 158, 11, 0.2); }
+    .pl { background: rgba(34, 197, 94, 0.1); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.2); }
+    
+    .arr { font-size: 11px; color: var(--text-muted); transition: transform .2s; }
+    .mrow.on .arr { color: var(--accent-color); transform: translateX(3px); }
 
     /* Profile panel */
-    .profile-panel { flex: 1; padding: 26px 28px; overflow-y: auto; }
+    .profile-panel { 
+      flex: 1; 
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 32px; 
+      overflow-y: auto;
+      backdrop-filter: blur(20px);
+    }
 
     .empty-state {
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      height: 400px; gap: 12px;
-      color: #515052; font-size: 13px;
+      height: 100%; gap: 16px;
+      color: var(--text-muted); font-size: 14px;
     }
-    .empty-state svg { width: 42px; height: 42px; stroke: #515052; fill: none; opacity: .45; }
+    .empty-state svg { width: 48px; height: 48px; stroke: var(--text-muted); fill: none; opacity: .5; }
 
     .phead {
-      display: flex; align-items: center; gap: 18px;
-      margin-bottom: 24px; padding-bottom: 20px;
-      border-bottom: 1px solid rgba(255,255,255,.06);
+      display: flex; align-items: center; gap: 20px;
+      margin-bottom: 32px; padding-bottom: 24px;
+      border-bottom: 1px solid var(--border-color);
     }
     .pav {
-      width: 56px; height: 56px; border-radius: 50%; flex-shrink: 0;
+      width: 64px; height: 64px; border-radius: 50%; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      font-size: 20px; font-weight: 700;
-      border: 2px solid rgba(255,255,255,.12);
+      font-size: 22px; font-weight: 700;
+      border: 1px solid rgba(255, 255, 255, 0.15);
     }
-    .ptitle { font-size: 20px; font-weight: 700; color: #FFFFFA; margin-bottom: 4px; }
-    .pmeta  { font-size: 12px; color: #515052; }
+    .ptitle { font-size: 24px; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
+    .pmeta  { font-size: 13px; color: var(--text-muted); }
 
     .kgrid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0,1fr));
-      gap: 10px; margin-bottom: 24px;
+      gap: 16px; margin-bottom: 32px;
     }
     .kcard {
-      background: #000103;
-      border: 1px solid rgba(86,203,249,.12);
-      border-radius: 10px; padding: 16px 10px; text-align: center;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 10px; padding: 20px 16px; text-align: center;
+      transition: background .2s;
     }
+    .kcard:hover { background: rgba(255, 255, 255, 0.04); }
     .klbl {
-      font-size: 10px; color: #515052;
-      text-transform: uppercase; letter-spacing: .08em;
-      margin-bottom: 10px; font-weight: 600;
+      font-size: 11px; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .05em;
+      margin-bottom: 8px; font-weight: 600;
     }
-    .knum { font-size: 28px; font-weight: 700; line-height: 1; }
-    .c-blue   { color: #56CBF9; }
-    .c-green  { color: #81F4E1; }
-    .c-red    { color: #FF312E; }
-    .c-purple { color: #FF729F; }
+    .knum { font-size: 32px; font-weight: 700; line-height: 1; }
+    .c-blue   { color: #38bdf8; }
+    .c-green  { color: #4ade80; }
+    .c-red    { color: #f87171; }
+    .c-purple { color: #c084fc; }
 
-    .ihead { font-size: 14px; font-weight: 700; color: #FFFFFA; margin-bottom: 12px; }
+    .ihead { font-size: 16px; font-weight: 700; color: var(--text-main); margin-bottom: 16px; }
 
-    .icard { border-radius: 10px; border: 1px solid; padding: 14px 16px; margin-bottom: 10px; }
-    .icard.str { background: rgba(129,244,225,.06); border-color: rgba(129,244,225,.2); }
-    .icard.imp { background: rgba(255,49,46,.06);   border-color: rgba(255,49,46,.25); }
-    .icard.exe { background: rgba(86,203,249,.05);  border-color: rgba(86,203,249,.15); }
+    .icard { border-radius: 10px; border: 1px solid; padding: 16px 20px; margin-bottom: 12px; }
+    .icard.str { background: rgba(34, 197, 94, 0.05); border-color: rgba(34, 197, 94, 0.2); }
+    .icard.imp { background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.2); }
+    .icard.exe { background: rgba(56, 189, 248, 0.05); border-color: rgba(56, 189, 248, 0.2); }
 
-    .itop { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
-    .iicon { width: 15px; height: 15px; flex-shrink: 0; fill: none; stroke-width: 2; }
-    .itag  { font-size: 12px; font-weight: 700; }
-    .tg { color: #81F4E1; }
-    .tw { color: #FF312E; }
-    .tb { color: #56CBF9; }
-    .ibody { font-size: 12px; color: #8a8d9a; line-height: 1.65; }
+    .itop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .iicon { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke-width: 2; }
+    .itag  { font-size: 13px; font-weight: 600; }
+    .tg { color: #4ade80; }
+    .tw { color: #f87171; }
+    .tb { color: #38bdf8; }
+    .ibody { font-size: 13px; color: var(--text-muted); line-height: 1.6; }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
   </style>
 </head>
 <body>
@@ -221,7 +276,7 @@
   <!-- Top bar -->
   <div class="topbar">
     <div class="topbar-left">
-      <span class="pms-logo">PMS</span>
+      <span class="pms-logo">P</span>
       <div>
         <div class="pms-title">Project Monitoring System</div>
         <div class="pms-sub">v2.0 — Team Intelligence</div>
@@ -234,7 +289,7 @@
       </div>
       <a href="#" class="active">Team Analytics</a>
       <a href="#">Update Profile</a>
-      <a href="#" style="color:#FF312E">Logout</a>
+      <a href="#" style="color:var(--accent-color)">Logout</a>
     </div>
   </div>
 
@@ -259,35 +314,37 @@
       <div class="analytics">
         <!-- Member list -->
         <div class="member-list">
-          <div class="ml-title">Team Members</div>
-          <div class="ml-sub">Click a member to view profile</div>
+          <div>
+            <div class="ml-title">Team Members</div>
+            <div class="ml-sub">Click a member to view profile</div>
+          </div>
 
           <div class="mrow" id="r-dev" onclick="pick('dev')">
             <div class="av av-d">D</div>
             <div class="minfo"><div class="mname">Dev Patel</div><div class="mrole">Team Member · IT</div></div>
-            <span class="pill pm">M</span><span class="arr">▶</span>
+            <span class="pill pm">M</span><span class="arr">→</span>
           </div>
           <div class="mrow" id="r-ayush" onclick="pick('ayush')">
             <div class="av av-a">A</div>
             <div class="minfo"><div class="mname">Ayush Patel</div><div class="mrole">Team Member · IT</div></div>
-            <span class="pill pl">L</span><span class="arr">▶</span>
+            <span class="pill pl">L</span><span class="arr">→</span>
           </div>
           <div class="mrow" id="r-sharavan" onclick="pick('sharavan')">
             <div class="av av-s">S</div>
             <div class="minfo"><div class="mname">Sharavan Panchal</div><div class="mrole">Team Member · IT</div></div>
-            <span class="pill pl">L</span><span class="arr">▶</span>
+            <span class="pill pl">L</span><span class="arr">→</span>
           </div>
           <div class="mrow" id="r-krishn" onclick="pick('krishn')">
             <div class="av av-k">K</div>
             <div class="minfo"><div class="mname">Krishn Shukala</div><div class="mrole">Team Member · QA</div></div>
-            <span class="pill pl">L</span><span class="arr">▶</span>
+            <span class="pill pl">L</span><span class="arr">→</span>
           </div>
         </div>
 
         <!-- Profile panel -->
         <div class="profile-panel">
           <div id="emp" class="empty-state">
-            <svg viewBox="0 0 24 24" stroke-width="1.2">
+            <svg viewBox="0 0 24 24" stroke-width="1.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"/>
             </svg>
             <span>Select a team member to view their profile</span>
@@ -313,7 +370,7 @@
 
             <div class="icard str">
               <div class="itop">
-                <svg class="iicon" viewBox="0 0 24 24" stroke="#81F4E1">
+                <svg class="iicon" viewBox="0 0 24 24" stroke="#4ade80">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
                 <span class="itag tg">Key Strengths</span>
@@ -323,7 +380,7 @@
 
             <div class="icard imp">
               <div class="itop">
-                <svg class="iicon" viewBox="0 0 24 24" stroke="#FF312E">
+                <svg class="iicon" viewBox="0 0 24 24" stroke="#f87171">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
                 </svg>
                 <span class="itag tw">Areas for Improvement</span>
@@ -333,7 +390,7 @@
 
             <div class="icard exe">
               <div class="itop">
-                <svg class="iicon" viewBox="0 0 24 24" stroke="#56CBF9">
+                <svg class="iicon" viewBox="0 0 24 24" stroke="#38bdf8">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/>
                 </svg>
                 <span class="itag tb">Executive Summary</span>
@@ -384,7 +441,7 @@
       if (cur) document.getElementById('r-' + cur).classList.remove('on');
       if (cur === id) {
         cur = null;
-        document.getElementById('emp').style.display = '';
+        document.getElementById('emp').style.display = 'flex';
         document.getElementById('pane').style.display = 'none';
         return;
       }
