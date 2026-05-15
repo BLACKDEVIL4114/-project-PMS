@@ -133,7 +133,7 @@ def init_database():
         cursor.execute("PRAGMA cache_size=-64000")
         
         # 1. Projects Table
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
@@ -808,7 +808,7 @@ class ProjectMonitorApp:
         self.content_frame = None
         self._ai_engine = None
         self.pm_refresh_job = None
-        self.pm_refresh_interval_ms = 1500
+        self.pm_refresh_interval_ms = 15000 # Increased to 15 seconds to fix performance issues
         self._last_db_signature = None
         self._last_ui_interaction_ts = time.monotonic()
         self._resize_job = None
@@ -818,15 +818,21 @@ class ProjectMonitorApp:
         self.init_ui()
         
         self.root.bind("<Configure>", self._on_root_configure)
-        self.schedule_pm_dashboard_auto_refresh()
 
     def stop_pm_dashboard_auto_refresh(self):
-        if self.pm_refresh_job:
+        if hasattr(self, 'pm_refresh_job') and self.pm_refresh_job:
             try:
                 self.root.after_cancel(self.pm_refresh_job)
             except:
                 pass
             self.pm_refresh_job = None
+            
+        if hasattr(self, '_auto_refresh_timer') and self._auto_refresh_timer:
+            try:
+                self.root.after_cancel(self._auto_refresh_timer)
+            except:
+                pass
+            self._auto_refresh_timer = None
 
     def _mark_ui_interaction(self, *_args):
         self._last_ui_interaction_ts = time.monotonic()
@@ -1197,12 +1203,48 @@ class ProjectMonitorApp:
             reset_bg(widget)
 
         widget.bind("<Enter>", _on_enter)
+        
+        def _on_click(e):
+            if isinstance(widget, Frame):
+                try:
+                    parent = widget.master
+                    if parent:
+                        for sibling in parent.winfo_children():
+                            if sibling != widget and isinstance(sibling, Frame):
+                                try:
+                                    if sibling.cget('bg') == "#1e2544":
+                                        orig_bg = getattr(sibling, "_default_bg", CARD_BG)
+                                        sibling.config(bg=orig_bg, highlightbackground=BORDER_COLOR, highlightthickness=1)
+                                        def reset_children_bg(w):
+                                            for c in w.winfo_children():
+                                                try:
+                                                    orig_c_bg = getattr(c, "_default_bg", None)
+                                                    if orig_c_bg: c.config(bg=orig_c_bg)
+                                                except: pass
+                                                reset_children_bg(c)
+                                        reset_children_bg(sibling)
+                                except Exception: pass
+                except Exception: pass
+            
+            widget.config(bg="#1e2544", highlightbackground=accent_color, highlightthickness=2)
+            def set_selected_bg(w):
+                remember_bg(w)
+                if not hasattr(w, '_is_badge'):
+                    try:
+                        w.config(bg="#1e2544")
+                    except Exception: pass
+                for c in w.winfo_children():
+                    set_selected_bg(c)
+            set_selected_bg(widget)
+
+        widget.bind("<Button-1>", _on_click, "+")
         widget.bind("<Leave>", _on_leave)
         # Bind children too
         def bind_recursive(w):
             remember_bg(w)
             w.bind("<Enter>", _on_enter)
             w.bind("<Leave>", _on_leave)
+            w.bind("<Button-1>", _on_click, "+")
             for child in w.winfo_children():
                 bind_recursive(child)
         remember_bg(widget)
@@ -2444,10 +2486,13 @@ class ProjectMonitorApp:
                     ava_colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
                     ava_c = ava_colors[sum(ord(c) for c in name) % len(ava_colors)]
                     
-                    ava = Canvas(ava_frame, width=40, height=40, bg=CARD_BG, highlightthickness=0)
+                    ava = Canvas(ava_frame, width=44, height=44, bg=CARD_BG, highlightthickness=0)
                     ava.pack()
-                    ava.create_oval(2, 2, 38, 38, fill=ava_c, outline="")
-                    ava.create_text(20, 20, text=initials, fill=WHITE, font=('Segoe UI', 10, 'bold'))
+                    ava.create_oval(2, 2, 42, 42, fill=ava_c, outline="")
+                    ava.create_text(22, 22, text=initials, fill=WHITE, font=('Segoe UI', 11, 'bold'))
+                    
+                    # Add a beautiful status indicator dot (online/active) at the bottom right
+                    ava.create_oval(30, 30, 42, 42, fill="#10b981", outline=CARD_BG, width=1.5)
                     
                     # 2. Member Details
                     m_f = Frame(row, bg=CARD_BG)
@@ -2554,9 +2599,9 @@ class ProjectMonitorApp:
             act_box = Frame(right_col, bg=CARD_BG, padx=20, pady=20, highlightbackground=BORDER_COLOR, highlightthickness=1)
             act_box.pack(fill=BOTH, expand=True)
             
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT timestamp, user_name, action FROM activity_timeline 
-                WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
+                WHERE project_id IN (SELECT id FROM projects WHERE {'manager' if CURRENT_USER_ROLE.lower() == 'project manager' else 'team_leader'} LIKE ?)
                 ORDER BY id DESC LIMIT 6
             """, (f"%{CURRENT_USER_NAME}%",))
             activities = cursor.fetchall()
@@ -2666,7 +2711,7 @@ class ProjectMonitorApp:
         try:
             con = sqlite3.connect(get_db_path())
             cursor = con.cursor()
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT t.id FROM tasks t 
                 JOIN projects p ON t.project_id = p.id 
                 WHERE t.title=? AND p.name=?
@@ -2870,78 +2915,56 @@ class ProjectMonitorApp:
         }
 
         def create_pm_card(parent_frame, title, value, color, command=None, tooltip_text=None):
-            # Outer frame acts as a 1px colored border
-            outer = Frame(parent_frame, bg=color, padx=1, pady=1,
-                          cursor="hand2" if command else "arrow")
-            card = Frame(outer, bg=CARD_BG, padx=18, pady=14)
-            card.pack(fill=BOTH, expand=True)
+            card = Frame(
+                parent_frame,
+                bg=CARD_BG,
+                padx=18,
+                pady=14,
+                highlightbackground="#2e3760",
+                highlightthickness=1,
+                cursor="hand2" if command else "arrow",
+            )
 
-            def on_enter(e):
-                try:
-                    card.config(bg=HOVER_BG)
-                    for w in card.winfo_children():
-                        try: w.config(bg=HOVER_BG)
-                        except: pass
-                    for w2 in card.winfo_children():
-                        for w3 in w2.winfo_children() if hasattr(w2, 'winfo_children') else []:
-                            try: w3.config(bg=HOVER_BG)
-                            except: pass
-                except: pass
-
-            def on_leave(e):
-                try:
-                    card.config(bg=CARD_BG)
-                    for w in card.winfo_children():
-                        try: w.config(bg=CARD_BG)
-                        except: pass
-                    for w2 in card.winfo_children():
-                        for w3 in w2.winfo_children() if hasattr(w2, 'winfo_children') else []:
-                            try: w3.config(bg=CARD_BG)
-                            except: pass
-                except: pass
-
-            def on_click(e=None):
-                if command: command()
-
-            # Top accent stripe (colored top bar)
-            stripe = Frame(card, bg=color, height=3)
-            stripe.pack(fill=X, pady=(0, 10))
+            # Apply the global hover/click effect (requested by user)
+            self._apply_hover_effect(card, color)
 
             # Icon + Title row
             top = Frame(card, bg=CARD_BG)
             top.pack(fill=X)
 
             icon_txt = _CARD_ICONS.get(title, "📊")
-            icon_lbl = Label(top, text=icon_txt, font=('Segoe UI', 13),
-                             bg=color, fg=WHITE, padx=5, pady=1)
-            icon_lbl.pack(side=LEFT)
+            
+            # Icon Box (Colored Background) - Fixed square to match reference image
+            icon_frame = Frame(top, bg=color, width=28, height=28)
+            icon_frame.pack(side=LEFT)
+            icon_frame.pack_propagate(False)
+            icon_frame._is_badge = True # Preserve bg in hover
+            
+            icon_lbl = Label(icon_frame, text=icon_txt, font=('Segoe UI Emoji', 12),
+                             bg=color, fg=WHITE)
+            icon_lbl.pack(expand=True)
+            icon_lbl._is_badge = True
 
             l_title = Label(top, text=title.upper(), font=('Segoe UI', 9, 'bold'),
                             bg=CARD_BG, fg=TEXT_SECONDARY, padx=8)
-            l_title.pack(side=LEFT, pady=(4, 0))
+            l_title.pack(side=LEFT, pady=(2, 0))
 
             # Big value
             l_val = Label(card, text=value, font=('Segoe UI', 30, 'bold'),
                           bg=CARD_BG, fg=TEXT_WHITE)
             l_val.pack(anchor=W, pady=(6, 0))
 
-            # Bottom thin bar
-            bar = Frame(card, bg=color, height=3)
-            bar.pack(fill=X, pady=(10, 0))
-
-            # Hover bindings
-            for w in [outer, card, stripe, top, icon_lbl, l_title, l_val, bar]:
-                w.bind("<Enter>", on_enter)
-                w.bind("<Leave>", on_leave)
-                if command:
-                    w.bind("<Button-1>", on_click)
+            if command:
+                card.bind("<Button-1>", lambda e: command(), "+")
+                for w in [top, icon_lbl, l_title, l_val]:
+                    w.bind("<Button-1>", lambda e: command(), "+")
 
             if tooltip_text:
                 CreateToolTip(card, tooltip_text)
                 CreateToolTip(l_title, tooltip_text)
                 CreateToolTip(l_val, tooltip_text)
 
-            return outer
+            return card
 
         # Card 1: Total Projects
         c1 = create_pm_card(stats_frame, "Total Projects", str(total_projects), ACCENT_BLUE, 
@@ -2994,6 +3017,7 @@ class ProjectMonitorApp:
 
                 p_item = Frame(row_wrap, bg=CARD_BG, padx=16, pady=10, cursor="hand2")
                 p_item.pack(fill=BOTH, expand=True, padx=(4, 0))
+                self._apply_hover_effect(p_item, _bar_col)
 
                 def open_proj(p=pid, n=pname):
                     self.show_project_tasks_modal(p, n)
@@ -3008,6 +3032,7 @@ class ProjectMonitorApp:
 
                 # Pill-style status badge
                 badge_frame = Frame(info, bg=_s_bg, padx=7, pady=2)
+                badge_frame._is_badge = True
                 badge_frame.pack(side=LEFT, padx=8)
                 Label(badge_frame, text=status, font=('Segoe UI', 8, 'bold'),
                       bg=_s_bg, fg=WHITE).pack()
@@ -3182,13 +3207,44 @@ class ProjectMonitorApp:
         card.pack_propagate(False)
         card.configure(height=140)
 
-        Label(
-            card,
+        # Icon mapping based on title
+        icons = {
+            "TOTAL PROJECTS": "📁",
+            "TOTAL EMPLOYEES": "👥",
+            "TEAM LEADERS": "👑",
+            "ACTIVE PROJECTS": "🔄",
+            "DELAYED PROJECTS": "⚠️"
+        }
+        icon_char = icons.get(title.upper(), "📊")
+
+        # Top Row: Icon and Title
+        top_row = Frame(card, bg="#212840")
+        top_row.pack(fill=X, anchor=W)
+
+        # Icon Box (Colored Background)
+        icon_frame = Frame(top_row, bg=color, width=32, height=32)
+        icon_frame.pack(side=LEFT, padx=(0, 10))
+        icon_frame.pack_propagate(False)
+        
+        # Center the icon in the box
+        icon_lbl = Label(
+            icon_frame,
+            text=icon_char,
+            font=('Segoe UI Emoji', 14),
+            bg=color,
+            fg="white"
+        )
+        icon_lbl.pack(expand=True)
+
+        # Title
+        title_lbl = Label(
+            top_row,
             text=title.upper(),
             font=('Segoe UI', 9, 'bold'),
             bg="#212840",
             fg="#9aa3c2",
-        ).pack(anchor=W)
+        )
+        title_lbl.pack(side=LEFT, anchor=CENTER)
 
         # Main Value
         val_lbl = Label(
@@ -3196,14 +3252,13 @@ class ProjectMonitorApp:
             text=value,
             font=('Segoe UI', 32, 'bold'),
             bg="#212840",
-            fg=color,
+            fg="white", # White text for value looks more premium as requested or keep it colorful
         )
-        val_lbl.pack(expand=True)
+        val_lbl.pack(anchor=W, pady=(15, 0)) # Align to left like in the image
 
         if on_click:
-            for w in [card, val_lbl]:
+            for w in [card, val_lbl, top_row, icon_frame, icon_lbl, title_lbl]:
                 w.bind("<Button-1>", lambda e: on_click())
-        
         return card
 
     def create_stat_card_modern(self, parent, title, value, accent_color, subtitle="", icon="📊", on_click=None):
@@ -4598,14 +4653,23 @@ class ProjectMonitorApp:
               font=('Segoe UI', 10), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(8, 16))
 
         stat_row = Frame(hero_left, bg=CARD_BG)
-        stat_row.pack(fill=X, pady=(0, 5))
+        # stat_row.pack(fill=X, pady=(0, 5)) # Removed per user request
 
         def build_stat_tile(parent, icon, accent, title, value_text):
             tile = Frame(parent, bg=HEADER_BG, padx=18, pady=16, highlightbackground=accent, highlightthickness=1)
             
             top_r = Frame(tile, bg=HEADER_BG)
             top_r.pack(fill=X)
-            Label(top_r, text=icon, font=('Segoe UI', 12), bg=HEADER_BG).pack(side=LEFT, padx=(0, 8))
+
+            # Icon Box (Colored Background) - Fixed square to match reference image
+            icon_frame = Frame(top_r, bg=accent, width=24, height=24)
+            icon_frame.pack(side=LEFT, padx=(0, 8))
+            icon_frame.pack_propagate(False)
+            
+            icon_lbl = Label(icon_frame, text=icon, font=('Segoe UI Emoji', 10),
+                             bg=accent, fg=WHITE)
+            icon_lbl.pack(expand=True)
+
             Label(top_r, text=title.upper(), font=('Segoe UI', 8, 'bold'), bg=HEADER_BG, fg=MUTED_TEXT).pack(side=LEFT)
             
             value_label = Label(tile, text=value_text, font=('Segoe UI', 18, 'bold'), bg=HEADER_BG, fg=TEXT_WHITE)
@@ -4613,17 +4677,17 @@ class ProjectMonitorApp:
             return tile, value_label
 
         total_tile, self.projects_total_chip = build_stat_tile(stat_row, "📊", ACCENT_BLUE, "Total Projects", "0")
-        total_tile.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 10))
+        # total_tile.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 10))
         ongoing_tile, self.projects_ongoing_chip = build_stat_tile(stat_row, "🏗️", ACCENT_GREEN, "Ongoing", "0")
-        ongoing_tile.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 10))
+        # ongoing_tile.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 10))
         delayed_tile, self.projects_delayed_chip = build_stat_tile(stat_row, "⚠️", ACCENT_RED, "Delayed", "0")
-        delayed_tile.pack(side=LEFT, fill=BOTH, expand=True)
+        # delayed_tile.pack(side=LEFT, fill=BOTH, expand=True)
 
         if is_narrow:
             # Adjust hero layout for narrow screens
             hero_left.pack_configure(side=TOP)
             btn_frame.pack_configure(side=TOP, anchor=W, padx=0, pady=(10, 0))
-            stat_row.pack_configure(pady=(10, 5))
+            # stat_row.pack_configure(pady=(10, 5))
 
         btn_frame = Frame(hero, bg=CARD_BG)
         btn_frame.pack(side=RIGHT, anchor=NE, padx=(20, 0))
@@ -4637,7 +4701,7 @@ class ProjectMonitorApp:
         if CURRENT_USER_ROLE.lower() in ['admin', 'project manager', 'team leader']:
             make_action_btn(btn_frame, "+ New Project", ACCENT_GREEN, self.add_project_modal).pack(side=LEFT, padx=6)
             make_action_btn(btn_frame, "⚙ Update", ACCENT_PURPLE, self.update_project_modal).pack(side=LEFT, padx=6)
-            make_action_btn(btn_frame, "👁 Details", ACCENT_BLUE, lambda: self.on_project_double_click(None)).pack(side=LEFT, padx=6)
+            # make_action_btn(btn_frame, "👁 Details", ACCENT_BLUE, lambda: self.on_project_double_click(None)).pack(side=LEFT, padx=6)
             if CURRENT_USER_ROLE.lower() in ('project manager', 'admin'):
                 make_action_btn(btn_frame, "🗑 Delete", PRIMARY_BG, self.delete_project).pack(side=LEFT, padx=6)
 
@@ -4657,7 +4721,7 @@ class ProjectMonitorApp:
         tree_frame.pack(fill=BOTH, expand=True)
 
         table_header = Frame(tree_frame, bg=CARD_BG, padx=20, pady=14)
-        table_header.pack(fill=X)
+        # table_header.pack(fill=X)
         Label(table_header, text="Project Portfolio", font=('Segoe UI', 14, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
         
         # Filter & Search (Modernized UI fix)
@@ -4679,7 +4743,7 @@ class ProjectMonitorApp:
 
         if is_narrow:
             ctrls.pack_configure(side=TOP, anchor=W, padx=0, pady=(5, 0))
-            table_header.pack_configure(pady=6)
+            # table_header.pack_configure(pady=6)
             Label(table_header, text="Double-click a row for breakdown", font=('Segoe UI', 8),
                   bg=CARD_BG, fg=MUTED_TEXT).pack(side=TOP, anchor=W, pady=(5,0))
         else:
@@ -4687,7 +4751,7 @@ class ProjectMonitorApp:
                   bg=CARD_BG, fg=MUTED_TEXT).pack(side=RIGHT)
 
         divider = Frame(tree_frame, bg=BORDER_COLOR, height=1)
-        divider.pack(fill=X)
+        # divider.pack(fill=X)
 
         table_wrap = Frame(tree_frame, bg=CARD_BG)
         table_wrap.pack(fill=BOTH, expand=True)
@@ -5214,51 +5278,51 @@ class ProjectMonitorApp:
         Label(header, text="Create a polished project record with leadership, dates, scope, and rollout context.",
               font=('Segoe UI', 10), bg=modal_panel, fg=MUTED_TEXT).pack(anchor=W, pady=(8, 0))
 
-        chip_row = Frame(hero, bg=modal_panel)
-        chip_row.pack(anchor=W, pady=(14, 0))
-        Label(chip_row, text=" Project Setup ", bg=ACCENT_BLUE, fg=WHITE, font=('Segoe UI', 9, 'bold'), padx=10, pady=4).pack(side=LEFT, padx=(0, 8))
-        Label(chip_row, text=" Delivery Ready ", bg=ACCENT_GREEN, fg=WHITE, font=('Segoe UI', 9, 'bold'), padx=10, pady=4).pack(side=LEFT, padx=(0, 8))
-        Label(chip_row, text=" Timeline Driven ", bg=ACCENT_ORANGE, fg=WHITE, font=('Segoe UI', 9, 'bold'), padx=10, pady=4).pack(side=LEFT)
 
-        insights = Frame(hero, bg=modal_panel)
-        insights.pack(fill=X, pady=(16, 0))
-        for idx, (title, value, accent) in enumerate((
-            ("Lead Type", "Single Team Leader", ACCENT_BLUE),
-            ("Default Status", "Ongoing", ACCENT_GREEN),
-            ("Focus", "Clarity + Ownership", PRIMARY_BG),
-        )):
-            tile = Frame(insights, bg="#253244", padx=14, pady=12, highlightbackground=accent, highlightthickness=1)
-            tile.pack(side=LEFT, fill=BOTH, expand=True, padx=(0 if idx == 0 else 10, 0))
-            Label(tile, text=title.upper(), bg="#253244", fg=MUTED_TEXT, font=('Segoe UI', 8, 'bold')).pack(anchor=W)
-            Label(tile, text=value, bg="#253244", fg=TEXT_WHITE, font=('Segoe UI', 12, 'bold')).pack(anchor=W, pady=(6, 0))
 
-        next_step = StringVar(value="planner")
-        next_step_panel = Frame(card, bg=modal_panel, padx=18, pady=16, highlightbackground=modal_border, highlightthickness=1)
-        next_step_panel.pack(fill=X, pady=(0, 18))
-        Label(next_step_panel, text="After Create", bg=modal_panel, fg=TEXT_WHITE, font=('Segoe UI', 11, 'bold')).pack(anchor=W)
-        Label(next_step_panel, text="Choose what should happen immediately after the project is created.",
-              bg=modal_panel, fg=MUTED_TEXT, font=('Segoe UI', 9)).pack(anchor=W, pady=(4, 12))
-        next_step_cards = Frame(next_step_panel, bg=modal_panel)
-        next_step_cards.pack(fill=X)
 
-        def add_next_step_card(parent, value, title, subtitle, accent):
-            shell_card = Frame(parent, bg="#253244", padx=14, pady=12, highlightbackground=accent, highlightthickness=1, cursor="hand2")
-            shell_card.pack(side=LEFT, fill=BOTH, expand=True, padx=(0 if not parent.winfo_children() else 8, 0))
-            Label(shell_card, text=title.upper(), bg="#253244", fg=MUTED_TEXT, font=('Segoe UI', 8, 'bold')).pack(anchor=W)
-            Label(shell_card, text=title, bg="#253244", fg=TEXT_WHITE, font=('Segoe UI', 11, 'bold')).pack(anchor=W, pady=(6, 2))
-            Label(shell_card, text=subtitle, bg="#253244", fg=MUTED_TEXT, font=('Segoe UI', 9), wraplength=220, justify=LEFT).pack(anchor=W)
 
-            def _pick(_e=None):
-                next_step.set(value)
 
-            shell_card.bind("<Button-1>", _pick)
-            for child in shell_card.winfo_children():
-                child.bind("<Button-1>", _pick)
-            return shell_card
 
-        add_next_step_card(next_step_cards, "planner", "Open Task Planner", "Review the project and assign tasks manually in the project task view.", ACCENT_BLUE)
-        add_next_step_card(next_step_cards, "auto_plan", "Auto-Plan Starter Tasks", "Generate suggested starter tasks based on the project name and timeline.", ACCENT_GREEN)
-        add_next_step_card(next_step_cards, "done", "Just Create Project", "Save the project now and assign tasks later from the Projects or Tasks page.", ACCENT_ORANGE)
+
+
+
+
+
+
+
+
+
+
+
+
+        next_step = StringVar(value="done")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         form = Frame(card, bg=modal_card)
         form.pack(fill=BOTH, expand=True)
@@ -5910,7 +5974,7 @@ class ProjectMonitorApp:
         card.pack(fill=BOTH, expand=True)
 
         hero = Frame(card, bg=HEADER_BG, padx=24, pady=22, highlightbackground=BORDER_COLOR, highlightthickness=1)
-        hero.pack(fill=X, pady=(0, 18))
+        # hero.pack(fill=X, pady=(0, 18)) # Removed per user request
 
         Label(hero, text="Add Member", font=('Segoe UI', 28, 'bold'), bg=HEADER_BG, fg=TEXT_WHITE).pack(anchor=W)
         Label(hero, text="Create a polished staff profile with role, department, and contact details in one place.",
@@ -5937,15 +6001,16 @@ class ProjectMonitorApp:
         form_container = Frame(card, bg=CARD_BG)
         form_container.pack(fill=BOTH, expand=True)
 
-        # FAST ONBOARD SECTION
-        fast_f = Frame(form_container, bg="#1a2035", padx=20, pady=20, highlightbackground=ACCENT_BLUE, highlightthickness=1)
+
+        # FAST ONBOARD SECTION (Beautified)
+        fast_f = Frame(form_container, bg=HEADER_BG, padx=24, pady=24, highlightbackground=BORDER_COLOR, highlightthickness=1)
         fast_f.pack(fill=X, pady=(0, 25))
         
-        Label(fast_f, text="⚡ FAST ONBOARD", font=('Segoe UI', 12, 'bold'), bg="#1a2035", fg=ACCENT_BLUE).pack(anchor=W)
+        Label(fast_f, text="⚡ FAST ONBOARD", font=('Segoe UI', 14, 'bold'), bg=HEADER_BG, fg=ACCENT_BLUE).pack(anchor=W)
         Label(fast_f, text="Select an existing employee from the system to instantly add to your team.", 
-              font=('Segoe UI', 9), bg="#1a2035", fg=MUTED_TEXT).pack(anchor=W, pady=(2, 15))
+              font=('Segoe UI', 10), bg=HEADER_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(2, 20))
         
-        pick_wrap = Frame(fast_f, bg="#1a2035")
+        pick_wrap = Frame(fast_f, bg=HEADER_BG)
         pick_wrap.pack(fill=X)
         
         try:
@@ -5956,8 +6021,12 @@ class ProjectMonitorApp:
             con.close()
         except: avail = []
         
-        c_pick = ttk.Combobox(pick_wrap, values=avail, font=('Segoe UI', 11))
-        c_pick.pack(side=LEFT, fill=X, expand=True, padx=(0, 15), ipady=5)
+        # Embedded look for combobox
+        combo_wrap = Frame(pick_wrap, bg=INPUT_BG)
+        combo_wrap.pack(side=LEFT, fill=X, expand=True, padx=(0, 15))
+        
+        c_pick = ttk.Combobox(combo_wrap, values=avail, font=('Segoe UI', 11), style='Employee.TCombobox', state="readonly")
+        c_pick.pack(fill=X, padx=2, pady=2)
         if avail: c_pick.set("--- Select Employee ---")
         else: c_pick.set("No unassigned employees found")
         
@@ -5976,71 +6045,73 @@ class ProjectMonitorApp:
             else:
                 messagebox.showwarning("Select Member", "Please select a valid employee from the list.")
 
-        btn_fast = Button(pick_wrap, text="ONBOARD NOW", bg=ACCENT_BLUE, fg=WHITE, font=('Segoe UI', 9, 'bold'),
-                          relief=FLAT, padx=20, pady=10, command=fast_assign)
+        btn_fast = Button(pick_wrap, text="ONBOARD NOW", bg=ACCENT_BLUE, fg=WHITE, font=('Segoe UI', 10, 'bold'),
+                          relief=FLAT, padx=24, pady=10, cursor='hand2', command=fast_assign)
         btn_fast.pack(side=RIGHT)
         self._apply_hover_effect(btn_fast, ACCENT_BLUE, "#1c223d")
 
-        # Optional Manual Form
-        manual_box = Frame(form_container, bg=CARD_BG)
+        # Show manual form by default
+        show_manual = CURRENT_USER_ROLE.lower() != 'team leader'
         
-        def toggle_manual():
-            if manual_box.winfo_ismapped():
-                manual_box.pack_forget()
-                toggle_btn.config(text="Show manual creation form")
-            else:
-                manual_box.pack(fill=BOTH, expand=True)
-                toggle_btn.config(text="Hide manual creation form")
+        if show_manual:
+            manual_box = Frame(form_container, bg=CARD_BG)
+            manual_box.pack(fill=BOTH, expand=True)
 
-        toggle_btn = Button(form_container, text="Show manual creation form", font=('Segoe UI', 9, 'underline'), 
-                            bg=CARD_BG, fg=ACCENT_BLUE, relief=FLAT, cursor="hand2", command=toggle_manual)
-        toggle_btn.pack(anchor=W, pady=10)
+            form = Frame(manual_box, bg=CARD_BG)
+            form.pack(fill=BOTH, expand=True)
+            form.grid_columnconfigure(0, weight=1)
+            form.grid_columnconfigure(1, weight=1)
 
-        form = Frame(manual_box, bg=CARD_BG)
-        form.pack(fill=BOTH, expand=True)
-        form.grid_columnconfigure(0, weight=1)
-        form.grid_columnconfigure(1, weight=1)
+            entries = {}
 
-        entries = {}
+            def make_field(parent, label_text, row, col):
+                holder = Frame(parent, bg=HEADER_BG, padx=16, pady=14, highlightbackground=BORDER_COLOR, highlightthickness=1)
+                holder.grid(row=row, column=col, sticky="nsew", padx=10, pady=10)
+                Label(holder, text=label_text, bg=HEADER_BG, fg=TEXT_WHITE, font=('Segoe UI', 10, 'bold')).pack(anchor=W, pady=(0, 6))
+                return holder
 
-        def make_field(parent, label_text, row, col):
-            holder = Frame(parent, bg=HEADER_BG, padx=16, pady=14, highlightbackground=BORDER_COLOR, highlightthickness=1)
-            holder.grid(row=row, column=col, sticky="nsew", padx=10, pady=10)
-            Label(holder, text=label_text, bg=HEADER_BG, fg=TEXT_WHITE, font=('Segoe UI', 10, 'bold')).pack(anchor=W, pady=(0, 6))
-            return holder
+            def make_entry(parent, label_text, row, col):
+                holder = make_field(parent, label_text, row, col)
+                wrap = Frame(holder, bg="#253244", highlightbackground=BORDER_COLOR, highlightthickness=1)
+                wrap.pack(fill=X)
+                entry = Entry(wrap, font=('Segoe UI', 11), bg="#253244", fg=TEXT_WHITE, relief=FLAT, insertbackground=TEXT_WHITE)
+                entry.pack(fill=X, padx=12, pady=12, ipady=7)
+                return entry
 
-        def make_entry(parent, label_text, row, col):
-            holder = make_field(parent, label_text, row, col)
-            wrap = Frame(holder, bg="#253244", highlightbackground=BORDER_COLOR, highlightthickness=1)
-            wrap.pack(fill=X)
-            entry = Entry(wrap, font=('Segoe UI', 11), bg="#253244", fg=TEXT_WHITE, relief=FLAT, insertbackground=TEXT_WHITE)
-            entry.pack(fill=X, padx=12, pady=12, ipady=7)
-            return entry
+            e_fname = make_entry(form, "First Name", 0, 0)
+            entries["First Name"] = e_fname
 
-        e_fname = make_entry(form, "First Name", 0, 0)
-        entries["First Name"] = e_fname
+            e_lname = make_entry(form, "Last Name", 0, 1)
+            entries["Last Name"] = e_lname
 
-        e_lname = make_entry(form, "Last Name", 0, 1)
-        entries["Last Name"] = e_lname
-
-        entries["Mobile"] = make_entry(form, "Mobile", 1, 0)
-        entries["Email"] = make_entry(form, "Email", 1, 1)
-        entries["Department"] = make_entry(form, "Department", 2, 0)
-
-        role_holder = make_field(form, "Role", 2, 1)
-        role_wrap = Frame(role_holder, bg="#253244", highlightbackground=BORDER_COLOR, highlightthickness=1)
-        role_wrap.pack(fill=X)
-        c_role = ttk.Combobox(role_wrap, values=["Team Member", "Team Leader", "Senior Employee", "Project Manager"], state="readonly", font=('Segoe UI', 11))
-        c_role.set("Team Member")
-        c_role.pack(fill=X, padx=10, pady=10, ipady=6)
-        entries["Role"] = c_role
-
-        helper = Frame(card, bg=HEADER_BG, padx=18, pady=16, highlightbackground=BORDER_COLOR, highlightthickness=1)
-        helper.pack(fill=X, pady=(18, 0))
-        Label(helper, text="Account Setup Note", bg=HEADER_BG, fg=ACCENT_ORANGE, font=('Segoe UI', 8, 'bold')).pack(anchor=W)
-        Label(helper, text="The member's initial password will be set from the mobile number, so make sure it is entered correctly.",
-              bg=HEADER_BG, fg=MUTED_TEXT, font=('Segoe UI', 9), wraplength=760, justify=LEFT).pack(anchor=W, pady=(4, 0))
+            entries["Mobile"] = make_entry(form, "Mobile", 1, 0)
+            entries["Email"] = make_entry(form, "Email", 1, 1)
+        else:
+            # Show current team members for Team Leaders to fill space
+            team_f = Frame(form_container, bg=HEADER_BG, padx=24, pady=24, highlightbackground=BORDER_COLOR, highlightthickness=1)
+            team_f.pack(fill=BOTH, expand=True, pady=(0, 25))
             
+            Label(team_f, text="👥 CURRENT TEAM MEMBERS", font=('Segoe UI', 14, 'bold'), bg=HEADER_BG, fg=ACCENT_GREEN).pack(anchor=W)
+            Label(team_f, text="Members currently assigned to your team.", 
+                  font=('Segoe UI', 10), bg=HEADER_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(2, 10))
+            
+            columns = ('Name', 'Department', 'Role')
+            tree = ttk.Treeview(team_f, columns=columns, show='headings', style='Treeview')
+            for col in columns:
+                tree.heading(col, text=col)
+                tree.column(col, width=150)
+            tree.pack(fill=BOTH, expand=True)
+            
+            try:
+                con = sqlite3.connect(get_db_path())
+                cur = con.cursor()
+                cur.execute("SELECT name, department, role FROM employee WHERE reporting_manager=?", (CURRENT_USER_NAME,))
+                for row in cur.fetchall():
+                    tree.insert('', END, values=row)
+                con.close()
+            except Exception as e:
+                print(f"Error loading team: {e}")
+
         def save():
             try:
                 con = sqlite3.connect(get_db_path())
@@ -6050,8 +6121,8 @@ class ProjectMonitorApp:
                 lname = entries["Last Name"].get().strip()
                 mobile = entries["Mobile"].get().strip()
                 email = entries["Email"].get().strip()
-                department = entries["Department"].get().strip()
-                role = entries["Role"].get().strip()
+                department = "N/A"
+                role = "Team Member"
 
                 if not fname or not lname:
                      messagebox.showerror("Error", "First and Last Name are required", parent=t)
@@ -6076,19 +6147,42 @@ class ProjectMonitorApp:
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
-        footer = Frame(card, bg=HEADER_BG, padx=18, pady=16, highlightbackground=BORDER_COLOR, highlightthickness=1)
-        footer.pack(fill=X, pady=(18, 0))
+        footer = Frame(card, bg=HEADER_BG, padx=24, pady=20, highlightbackground=BORDER_COLOR, highlightthickness=1)
+        footer.pack(fill=X, pady=(20, 0))
+        
+        # Left side: Tips and Notes
         foot_info = Frame(footer, bg=HEADER_BG)
         foot_info.pack(side=LEFT, fill=X, expand=True)
-        Label(foot_info, text="Member Creation Tip", bg=HEADER_BG, fg=ACCENT_GREEN, font=('Segoe UI', 8, 'bold')).pack(anchor=W)
-        Label(foot_info, text="Use the correct role from the start so dashboard access and permissions stay accurate.",
-              bg=HEADER_BG, fg=MUTED_TEXT, font=('Segoe UI', 9)).pack(anchor=W, pady=(4, 0))
+        
+        if show_manual:
+            # Note 1
+            note1_f = Frame(foot_info, bg=HEADER_BG)
+            note1_f.pack(fill=X, pady=(0, 10))
+            Label(note1_f, text="🔑 Account Setup Note:", bg=HEADER_BG, fg=ACCENT_ORANGE, font=('Segoe UI', 9, 'bold')).pack(side=LEFT)
+            Label(note1_f, text=" The member's initial password will be set from the mobile number.",
+                  bg=HEADER_BG, fg=MUTED_TEXT, font=('Segoe UI', 9)).pack(side=LEFT)
+                  
+            # Note 2
+            note2_f = Frame(foot_info, bg=HEADER_BG)
+            note2_f.pack(fill=X)
+            Label(note2_f, text="💡 Member Creation Tip:", bg=HEADER_BG, fg=ACCENT_GREEN, font=('Segoe UI', 9, 'bold')).pack(side=LEFT)
+            Label(note2_f, text=" Use the correct role from the start so dashboard access and permissions stay accurate.",
+                  bg=HEADER_BG, fg=MUTED_TEXT, font=('Segoe UI', 9)).pack(side=LEFT)
+        
+        # Right side: Action Buttons
         action_row = Frame(footer, bg=HEADER_BG)
-        action_row.pack(side=RIGHT)
-        Button(action_row, text="Cancel", command=t.destroy, bg=ACCENT_HOVER, fg=TEXT_WHITE, font=('Segoe UI', 10, 'bold'),
-               relief=FLAT, padx=18, pady=10, activebackground=PRIMARY_RED_DARK, activeforeground=WHITE, cursor='hand2').pack(side=LEFT, padx=(0, 8))
-        Button(action_row, text="Save Member", command=save, bg=PRIMARY_BG, fg=TEXT_WHITE, font=('Segoe UI', 11, 'bold'),
-               relief=FLAT, padx=24, pady=10, activebackground=PRIMARY_RED_DARK, activeforeground=WHITE, cursor='hand2').pack(side=LEFT)
+        action_row.pack(side=RIGHT, padx=(20, 0))
+        
+        btn_cancel = Button(action_row, text="Cancel", command=t.destroy, bg=ACCENT_HOVER, fg=TEXT_WHITE, font=('Segoe UI', 10, 'bold'),
+               relief=FLAT, padx=20, pady=10, cursor='hand2')
+        btn_cancel.pack(side=LEFT, padx=(0, 10))
+        self._apply_hover_effect(btn_cancel, ACCENT_HOVER, "#1c223d")
+        
+        if show_manual:
+            btn_save = Button(action_row, text="Save Member", command=save, bg=PRIMARY_BG, fg=TEXT_WHITE, font=('Segoe UI', 11, 'bold'),
+                   relief=FLAT, padx=28, pady=10, cursor='hand2')
+            btn_save.pack(side=LEFT)
+            self._apply_hover_effect(btn_save, PRIMARY_BG, "#1c223d")
 
     def delete_member(self):
         selected = self.mem_tree.selection()
@@ -7374,11 +7468,19 @@ class ProjectMonitorApp:
                 con = sqlite3.connect(get_db_path()); cur = con.cursor()
                 cur.execute("INSERT INTO tasks (title, project_id, assigned_to, status, due_date, priority, created_date) VALUES (?,?,?,?,?,?,?)",
                             (title, pid, assignee, "Pending", e_date.get(), c_prio.get(), datetime.now().strftime("%Y-%m-%d")))
-                log_activity(pid, CURRENT_USER_NAME, f"Created new task: '{title}' assigned to {assignee}")
-                con.commit(); con.close()
+                
+                # Optimized: Do all database operations in a single connection and transaction to avoid OneDrive sync locks
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                cur.execute("INSERT INTO activity_timeline (project_id, user_name, action, timestamp) VALUES (?,?,?,?)", 
+                               (pid, CURRENT_USER_NAME, f"Created new task: '{title}' assigned to {assignee}", ts))
+                
                 if assignee:
-                    log_audit(CURRENT_USER_NAME, "Task Assigned", f"Assigned '{title}' to {assignee}")
-                    notify_user(assignee, f"New Task: {title}")
+                    cur.execute("INSERT INTO audit_logs (timestamp, user, action, details) VALUES (?,?,?,?)", 
+                                   (ts, CURRENT_USER_NAME, "Task Assigned", f"Assigned '{title}' to {assignee}"))
+                    cur.execute("INSERT INTO notifications (user, message, timestamp) VALUES (?,?,?)", 
+                                   (assignee, f"New Task: {title}", ts))
+                
+                con.commit(); con.close()
                 self.refresh_tasks(); t.destroy()
                 messagebox.showinfo("Success", f"Task '{title}' has been assigned.")
             except Exception as e: messagebox.showerror("Error", str(e))
@@ -7930,8 +8032,17 @@ class ProjectMonitorApp:
             
             f_head = Frame(f_box, bg=HEADER_BG)
             f_head.pack(fill=X)
-            Label(f_head, text=icon, font=('Segoe UI', 12), bg=HEADER_BG).pack(side=LEFT)
-            Label(f_head, text=lbl.upper(), font=('Segoe UI', 7, 'bold'), bg=HEADER_BG, fg=MUTED_TEXT).pack(side=LEFT, padx=8)
+            
+            # Icon Box (Colored Background) - Fixed square to match reference image
+            icon_frame = Frame(f_head, bg=clr, width=28, height=28)
+            icon_frame.pack(side=LEFT)
+            icon_frame.pack_propagate(False)
+            
+            icon_lbl = Label(icon_frame, text=icon, font=('Segoe UI Emoji', 12),
+                             bg=clr, fg=WHITE)
+            icon_lbl.pack(expand=True)
+
+            Label(f_head, text=lbl.upper(), font=('Segoe UI', 8, 'bold'), bg=HEADER_BG, fg=MUTED_TEXT).pack(side=LEFT, padx=8)
             Label(f_box, text=desc, font=('Segoe UI', 11, 'bold'), bg=HEADER_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(8, 0))
 
 
@@ -7942,11 +8053,11 @@ class ProjectMonitorApp:
         # Team Average Productivity
         avg_rate = 0
         try:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT AVG(rate) FROM (
                     SELECT (SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) AS rate
                     FROM tasks
-                    WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
+                    WHERE project_id IN (SELECT id FROM projects WHERE {'manager' if CURRENT_USER_ROLE.lower() == 'project manager' else 'team_leader'} LIKE ?)
                     GROUP BY assigned_to
                 )
             """, (f"%{CURRENT_USER_NAME}%",))
@@ -7959,18 +8070,18 @@ class ProjectMonitorApp:
         total_week = 0
         completed_month = 0
         try:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT COUNT(*)
                 FROM tasks
-                WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
+                WHERE project_id IN (SELECT id FROM projects WHERE {'manager' if CURRENT_USER_ROLE.lower() == 'project manager' else 'team_leader'} LIKE ?)
                   AND date(COALESCE(created_date, due_date)) >= date('now', '-6 days')
             """, (f"%{CURRENT_USER_NAME}%",))
             total_week = cur.fetchone()[0] or 0
 
-            cur.execute("""
+            cur.execute(f"""
                 SELECT COUNT(*)
                 FROM tasks
-                WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
+                WHERE project_id IN (SELECT id FROM projects WHERE {'manager' if CURRENT_USER_ROLE.lower() == 'project manager' else 'team_leader'} LIKE ?)
                   AND status='Completed'
                   AND date(COALESCE(completed_date, created_date, due_date)) >= date('now', 'start of month')
             """, (f"%{CURRENT_USER_NAME}%",))
@@ -7981,19 +8092,19 @@ class ProjectMonitorApp:
         team_size = 0
         active_members = 0
         try:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT COUNT(DISTINCT assigned_to)
                 FROM tasks
-                WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
+                WHERE project_id IN (SELECT id FROM projects WHERE {'manager' if CURRENT_USER_ROLE.lower() == 'project manager' else 'team_leader'} LIKE ?)
                   AND assigned_to IS NOT NULL
                   AND TRIM(assigned_to) != ''
             """, (f"%{CURRENT_USER_NAME}%",))
             team_size = cur.fetchone()[0] or 0
 
-            cur.execute("""
+            cur.execute(f"""
                 SELECT COUNT(DISTINCT assigned_to)
                 FROM tasks
-                WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
+                WHERE project_id IN (SELECT id FROM projects WHERE {'manager' if CURRENT_USER_ROLE.lower() == 'project manager' else 'team_leader'} LIKE ?)
                   AND status != 'Completed'
                   AND assigned_to IS NOT NULL
                   AND TRIM(assigned_to) != ''
@@ -8043,10 +8154,10 @@ class ProjectMonitorApp:
 
         weekly = []
         for i in range(5, -1, -1):
-            cur.execute("""
+            cur.execute(f"""
                 SELECT COUNT(*)
                 FROM tasks
-                WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
+                WHERE project_id IN (SELECT id FROM projects WHERE {'manager' if CURRENT_USER_ROLE.lower() == 'project manager' else 'team_leader'} LIKE ?)
                   AND status='Completed'
                   AND date(COALESCE(completed_date, created_date, due_date))
                       BETWEEN date('now', ? || ' days') AND date('now', ? || ' days')
@@ -8101,11 +8212,11 @@ class ProjectMonitorApp:
               bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(4, 14))
         trend = []
         for i in range(7, -1, -1):
-            cur.execute("""
+            cur.execute(f"""
                 SELECT AVG(rate) FROM (
                     SELECT (SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) AS rate
                     FROM tasks
-                    WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
+                    WHERE project_id IN (SELECT id FROM projects WHERE {'manager' if CURRENT_USER_ROLE.lower() == 'project manager' else 'team_leader'} LIKE ?)
                       AND date(COALESCE(completed_date, created_date, due_date))
                           BETWEEN date('now', ? || ' days') AND date('now', ? || ' days')
                     GROUP BY assigned_to
@@ -8157,10 +8268,10 @@ class ProjectMonitorApp:
               bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(4, 14))
         dist = []
         try:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT assigned_to, COUNT(*) 
                 FROM tasks 
-                WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?) AND status!='Completed'
+                WHERE project_id IN (SELECT id FROM projects WHERE {'manager' if CURRENT_USER_ROLE.lower() == 'project manager' else 'team_leader'} LIKE ?) AND status!='Completed'
                 GROUP BY assigned_to ORDER BY COUNT(*) DESC LIMIT 8
             """, (f"%{CURRENT_USER_NAME}%",))
             dist = cur.fetchall()
@@ -8204,13 +8315,13 @@ class ProjectMonitorApp:
             con = sqlite3.connect(get_db_path())
             cur = con.cursor()
 
-            cur.execute("""
+            cur.execute(f"""
                 SELECT assigned_to,
                        COUNT(*) as total,
                        SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) as completed,
                        SUM(CASE WHEN status='Delayed' OR (status!='Completed' AND due_date < date('now')) THEN 1 ELSE 0 END) as delayed
                 FROM tasks
-                WHERE project_id IN (SELECT id FROM projects WHERE team_leader LIKE ?)
+                WHERE project_id IN (SELECT id FROM projects WHERE {'manager' if CURRENT_USER_ROLE.lower() == 'project manager' else 'team_leader'} LIKE ?)
                 GROUP BY assigned_to
             """, (f"%{CURRENT_USER_NAME}%",))
 
