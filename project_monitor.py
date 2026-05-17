@@ -1340,7 +1340,7 @@ class ProjectMonitorApp:
         if 'admin' in role:
             allowed_pages.extend(['projects', 'members', 'tasks', 'productivity', 'reports', 'analytics', 'requests'])
         elif 'leader' in role:
-            allowed_pages.extend(['members', 'tasks', 'review_tasks', 'team_analytics', 'team_queries'])
+            allowed_pages.extend(['members', 'tasks', 'review_tasks', 'team_analytics', 'team_queries', 'leave_requests'])
         elif 'manager' in role:
             allowed_pages.extend(['projects', 'tasks', 'productivity', 'reports', 'analytics'])
         else: # Employee / Team Member / QA / etc.
@@ -1357,7 +1357,7 @@ class ProjectMonitorApp:
         main_sidebar_order = [
             'dashboard', # Main Managerial/Employee Dashboard
             'projects', 'members', 'tasks', 'productivity', 'reports', 'analytics', 'team_analytics', 'requests', 
-            'review_tasks', 'team_leaves', 'team_queries', # Admin/TL items
+            'review_tasks', 'team_leaves', 'team_queries', 'leave_requests', # Admin/TL items
             'emp_my_tasks', 'emp_team', 'emp_analysis', 
             'emp_queries', 'emp_attendance', 'emp_leave_requests' # Personal items
         ]
@@ -1557,7 +1557,7 @@ class ProjectMonitorApp:
                         m.get('mobile'), m.get('dob')
                     ))
 
-            con.commit()
+            con.commit(); self.refresh_current_panel()
             con.close()
             return True
         except Exception as e:
@@ -1589,6 +1589,76 @@ class ProjectMonitorApp:
         else:
             self._complete_hot_reload(True, original_text)
 
+
+
+    def refresh_current_panel(self):
+        """Call the correct refresh for whichever panel/tab is currently active."""
+        try:
+            # Refresh projects list
+            if hasattr(self, 'load_projects'):
+                self.load_projects()
+            if hasattr(self, 'refresh_projects'):
+                self.refresh_projects()
+            # Refresh tasks list
+            if hasattr(self, 'load_tasks'):
+                self.load_tasks()
+            if hasattr(self, 'refresh_tasks'):
+                self.refresh_tasks()
+            # Refresh members/users list
+            if hasattr(self, 'load_members'):
+                self.load_members()
+            if hasattr(self, 'load_users'):
+                self.load_users()
+            if hasattr(self, 'refresh_members'):
+                self.refresh_members()
+            # Refresh teams list
+            if hasattr(self, 'load_teams'):
+                self.load_teams()
+            if hasattr(self, 'refresh_teams'):
+                self.refresh_teams()
+            # Refresh dashboard stats
+            if hasattr(self, 'load_dashboard'):
+                self.load_dashboard()
+            if hasattr(self, 'update_dashboard_stats'):
+                self.update_dashboard_stats()
+            if hasattr(self, 'refresh_dashboard'):
+                self.refresh_dashboard()
+        except Exception as e:
+            print(f"[refresh_current_panel] Error: {e}")
+    def refresh_current_panel(self):
+        """Call the correct refresh for whichever panel/tab is currently active."""
+        try:
+            # Refresh projects list
+            if hasattr(self, 'load_projects'):
+                self.load_projects()
+            if hasattr(self, 'refresh_projects'):
+                self.refresh_projects()
+            # Refresh tasks list
+            if hasattr(self, 'load_tasks'):
+                self.load_tasks()
+            if hasattr(self, 'refresh_tasks'):
+                self.refresh_tasks()
+            # Refresh members/users list
+            if hasattr(self, 'load_members'):
+                self.load_members()
+            if hasattr(self, 'load_users'):
+                self.load_users()
+            if hasattr(self, 'refresh_members'):
+                self.refresh_members()
+            # Refresh teams list
+            if hasattr(self, 'load_teams'):
+                self.load_teams()
+            if hasattr(self, 'refresh_teams'):
+                self.refresh_teams()
+            # Refresh dashboard stats
+            if hasattr(self, 'load_dashboard'):
+                self.load_dashboard()
+            if hasattr(self, 'update_dashboard_stats'):
+                self.update_dashboard_stats()
+            if hasattr(self, 'refresh_dashboard'):
+                self.refresh_dashboard()
+        except Exception as e:
+            print(f"[refresh_current_panel] Error: {e}")
     def _complete_hot_reload(self, success, original_text):
         # Restore button
         if hasattr(self, 'btn_refresh'):
@@ -1880,7 +1950,7 @@ class ProjectMonitorApp:
                 else:
                     cur.execute("UPDATE employee SET password=? WHERE name=?", (new_hp, CURRENT_USER_NAME))
                 
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 messagebox.showinfo("Success", "Password updated successfully.")
                 curr_pass_ent.delete(0, END)
@@ -1913,7 +1983,7 @@ class ProjectMonitorApp:
                 else:
                     cur.execute("UPDATE employee SET mobile=?, email=?, address=? WHERE name=?", 
                                 (entries['Mobile'][0].get(), entries['Email'][0].get(), entries['Address'][0].get(), CURRENT_USER_NAME))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 messagebox.showinfo("Success", "Profile updated.")
                 t.destroy()
@@ -1958,7 +2028,7 @@ class ProjectMonitorApp:
                 con = sqlite3.connect(get_db_path())
                 cursor = con.cursor()
                 cursor.execute("UPDATE notifications SET is_read=1 WHERE user=?", (CURRENT_USER_NAME,))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 load_notifs()
             except: pass
@@ -3343,7 +3413,7 @@ class ProjectMonitorApp:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             cur.execute("INSERT INTO activity_timeline (project_id, user_name, action, timestamp) VALUES (?,?,?,?)",
                         (pid, tl, "[DEMO] Sprint created", ts))
-            con.commit()
+            con.commit(); self.refresh_current_panel()
             con.close()
             # Refresh cleanly through router
             self.switch_page('dashboard')
@@ -3367,7 +3437,7 @@ class ProjectMonitorApp:
                 cur.execute(f"DELETE FROM tasks WHERE project_id IN ({q})", pids)
                 cur.execute(f"DELETE FROM projects WHERE id IN ({q})", pids)
             cur.execute("DELETE FROM queries WHERE subject LIKE '[DEMO] %' AND lower(COALESCE(tl_name,'')) LIKE lower(?)", (f"%{tl}%",))
-            con.commit()
+            con.commit(); self.refresh_current_panel()
             con.close()
             # Refresh cleanly through router
             self.switch_page('dashboard')
@@ -3404,7 +3474,7 @@ class ProjectMonitorApp:
                     cu = c.cursor()
                     cu.execute("INSERT INTO leave_requests (member_name, start_date, end_date, reason) VALUES (?, ?, ?, ?)",
                               (CURRENT_USER_NAME, e_start.get(), e_end.get(), e_reason.get()))
-                    c.commit(); c.close()
+                    c.commit(); self.refresh_current_panel(); c.close()
                     d.destroy()
                     self.load_employee_panel() # Refresh the whole panel
             
@@ -3485,7 +3555,7 @@ class ProjectMonitorApp:
                 con = sqlite3.connect(get_db_path())
                 con.execute(f"INSERT INTO attendance ({att_name_col}, date, status, clock_in) VALUES (?,?,?,?)",
                            (CURRENT_USER_NAME, today, 'Present', time))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 update_status()
                 messagebox.showinfo("Success", "Clocked in successfully")
@@ -3500,7 +3570,7 @@ class ProjectMonitorApp:
                 con = sqlite3.connect(get_db_path())
                 con.execute(f"UPDATE attendance SET clock_out=? WHERE {att_name_col}=? AND date=?",
                            (time, CURRENT_USER_NAME, today))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 update_status()
                 messagebox.showinfo("Success", "Clocked out successfully")
@@ -3602,7 +3672,7 @@ class ProjectMonitorApp:
                 con = sqlite3.connect(get_db_path())
                 con.execute("INSERT INTO timesheets (employee_name, date, task_id, hours, description, timestamp) VALUES (?,?,?,?,?,?)",
                            (CURRENT_USER_NAME, dt, tid, float(hrs), desc, datetime.now().strftime("%Y-%m-%d %H:%M")))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 messagebox.showinfo("Success", "Timesheet logged")
                 e_hours.delete(0, END)
@@ -3908,7 +3978,7 @@ class ProjectMonitorApp:
                 report["leader_summary"],
                 report["action_plan"]
             ))
-        con.commit()
+        con.commit(); self.refresh_current_panel()
         con.close()
 
         for report in worst_payloads:
@@ -3999,7 +4069,7 @@ class ProjectMonitorApp:
             if reports:
                 report = reports[0]
                 cur.execute("UPDATE employee_analysis_reports SET is_read=1 WHERE employee_name=?", (CURRENT_USER_NAME,))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
 
                 hero = Frame(body, bg=CARD_BG, padx=24, pady=20, highlightbackground=BORDER_COLOR, highlightthickness=1)
                 hero.pack(fill=X, pady=(0, 16))
@@ -4230,7 +4300,7 @@ class ProjectMonitorApp:
                 
                 Label(body, text="UPDATE STATUS", font=('Segoe UI', 8, 'bold'), bg=CONTENT_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(15, 5))
                 status_var = StringVar(value=status)
-                status_cb = ttk.Combobox(body, textvariable=status_var, values=["Pending", "In Progress", "Completed"], state="readonly", width=15)
+                status_cb = ttk.Combobox(body, textvariable=status_var, values=["Pending", "In Progress", "Submit for Review", "Completed"], state="readonly", width=15)
                 status_cb.pack(anchor=W, pady=(0, 20))
                 
                 def save_status():
@@ -4263,7 +4333,7 @@ class ProjectMonitorApp:
             debug_log(f"DEBUG: Error showing task modal: {e}")
 
     def refresh_emp_tasks_tab(self):
-        if not hasattr(self, 'emp_tasks_container'):
+        if not hasattr(self, 'emp_tasks_container') or not self.emp_tasks_container.winfo_exists():
             return
             
         for widget in self.emp_tasks_container.winfo_children(): widget.destroy()
@@ -4524,7 +4594,7 @@ class ProjectMonitorApp:
                 con_inner = sqlite3.connect(get_db_path())
                 cur_inner = con_inner.cursor()
                 cur_inner.execute("UPDATE queries SET history=?, status='Open' WHERE id=?", (new_hist, qid))
-                con_inner.commit()
+                con_inner.commit(); self.refresh_current_panel()
                 con_inner.close()
                 
                 t.destroy()
@@ -4567,7 +4637,7 @@ class ProjectMonitorApp:
                 con = sqlite3.connect(get_db_path())
                 cur = con.cursor()
                 cur.execute("INSERT INTO queries (user_name, subject, message) VALUES (?,?,?)", (CURRENT_USER_NAME, sub, msg))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 messagebox.showinfo("Success", "Query sent to Team Leader")
                 self.refresh_emp_queries()
@@ -5079,7 +5149,7 @@ class ProjectMonitorApp:
                         cur2 = con2.cursor()
                         cur2.execute("INSERT INTO project_milestones (project_id, name, due_date, status, created_at) VALUES (?,?,?,?,?)",
                                      (pid, e1.get(), e2.get(), c.get(), datetime.now().strftime("%Y-%m-%d %H:%M")))
-                        con2.commit(); con2.close()
+                        con2.commit(); self.refresh_current_panel(); con2.close()
                         refresh_ms(); top.destroy()
                     except Exception as e:
                         messagebox.showerror("Error", str(e))
@@ -5376,7 +5446,7 @@ class ProjectMonitorApp:
                     (e_name.get().strip(), leader_str, leader_str, e_start.get().strip(), e_end.get().strip(), e_desc.get().strip())
                 )
                 pid = cur.lastrowid
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 log_activity(pid, CURRENT_USER_NAME, f"Created project '{e_name.get().strip()}' with team leader {leader_str}")
                 # Capture values before destroying the window
@@ -5428,7 +5498,7 @@ class ProjectMonitorApp:
             cursor = con.cursor()
             cursor.execute("DELETE FROM tasks WHERE project_id=?", (pid,))
             cursor.execute("DELETE FROM projects WHERE id=?", (pid,))
-            con.commit()
+            con.commit(); self.refresh_current_panel()
             con.close()
             self.refresh_current_page(sync=False)
             messagebox.showinfo("Success", "Project Deleted")
@@ -5525,7 +5595,7 @@ class ProjectMonitorApp:
                     WHERE id=?
                 """, (entries["name"].get(), leader_str, entries["start"].get(), 
                       entries["end"].get(), entries["desc"].get(), entries["status"].get(), pid))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 self.refresh_current_page(sync=False)
                 t.destroy()
@@ -5878,7 +5948,7 @@ class ProjectMonitorApp:
             con2 = sqlite3.connect(get_db_path())
             cur2 = con2.cursor()
             cur2.execute("UPDATE employee SET reporting_manager=? WHERE name=?", (CURRENT_USER_NAME, emp))
-            con2.commit()
+            con2.commit(); self.refresh_current_panel()
             con2.close()
             self.refresh_members()
             t.destroy()
@@ -5917,7 +5987,7 @@ class ProjectMonitorApp:
                 return
             con2 = sqlite3.connect(get_db_path())
             con2.execute("UPDATE employee SET reporting_manager=? WHERE name=?", (tl, e))
-            con2.commit()
+            con2.commit(); self.refresh_current_panel()
             con2.close()
             self.refresh_members()
             t.destroy()
@@ -6007,7 +6077,7 @@ class ProjectMonitorApp:
                     c = sqlite3.connect(get_db_path())
                     cu = c.cursor()
                     cu.execute("UPDATE employee SET reporting_manager=? WHERE name=?", (CURRENT_USER_NAME, target))
-                    c.commit(); c.close()
+                    c.commit(); self.refresh_current_panel(); c.close()
                     self.refresh_members()
                     t.destroy()
                     messagebox.showinfo("Success", f"{target} has been onboarded to your team.")
@@ -6109,7 +6179,7 @@ class ProjectMonitorApp:
                 pw = hashlib.sha256(mobile.encode()).hexdigest()
                 cur.execute("INSERT INTO employee (name, mobile, email, department, password, role) VALUES (?,?,?,?,?,?)",
                             (full_name, mobile, email, department, pw, role))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 self.refresh_members()
                 t.destroy()
@@ -6170,7 +6240,7 @@ class ProjectMonitorApp:
             con = sqlite3.connect(get_db_path())
             cursor = con.cursor()
             cursor.execute("DELETE FROM employee WHERE id=?", (mem_id,))
-            con.commit()
+            con.commit(); self.refresh_current_panel()
             con.close()
             self.refresh_members()
             messagebox.showinfo("Success", "Member deleted")
@@ -6230,7 +6300,7 @@ class ProjectMonitorApp:
                 cur.execute("UPDATE employee SET name=?, mobile=?, email=?, department=?, role=? WHERE id=?",
                             (entries["Name"].get(), entries["Mobile"].get(), entries["Email"].get(), 
                              entries["Department"].get(), entries["Role"].get(), mem_id))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 self.refresh_members()
                 t.destroy()
@@ -6246,7 +6316,7 @@ class ProjectMonitorApp:
                     con = sqlite3.connect(get_db_path())
                     cur = con.cursor()
                     cur.execute("UPDATE employee SET reporting_manager=? WHERE id=?", (CURRENT_USER_NAME, mem_id))
-                    con.commit()
+                    con.commit(); self.refresh_current_panel()
                     con.close()
                     self.refresh_members()
                     t.destroy()
@@ -6259,7 +6329,7 @@ class ProjectMonitorApp:
                     con = sqlite3.connect(get_db_path())
                     cur = con.cursor()
                     cur.execute("UPDATE employee SET reporting_manager=NULL WHERE id=?", (mem_id,))
-                    con.commit()
+                    con.commit(); self.refresh_current_panel()
                     con.close()
                     self.refresh_members()
                     t.destroy()
@@ -6527,7 +6597,7 @@ class ProjectMonitorApp:
                         cur2 = con2.cursor()
                         tids = [tree.item(i)['values'][0] for i in items]
                         cur2.executemany("UPDATE tasks SET assigned_to=? WHERE id=?", [(sel_user.get(), tid) for tid in tids])
-                        con2.commit(); con2.close()
+                        con2.commit(); self.refresh_current_panel(); con2.close()
                         refresh_tree()
                     except Exception as e:
                         messagebox.showerror("Error", str(e))
@@ -6556,7 +6626,7 @@ class ProjectMonitorApp:
                         con3 = sqlite3.connect(get_db_path())
                         cur3 = con3.cursor()
                         cur3.execute("UPDATE tasks SET assigned_to=? WHERE project_id=?", (proj_user.get(), pid))
-                        con3.commit(); con3.close()
+                        con3.commit(); self.refresh_current_panel(); con3.close()
                         refresh_tree()
                         messagebox.showinfo("Updated", "All project tasks assigned.")
                     except Exception as e:
@@ -6686,7 +6756,7 @@ class ProjectMonitorApp:
                 con = sqlite3.connect(get_db_path())
                 cur = con.cursor()
                 cur.executemany("INSERT INTO tasks (title, project_id, assigned_to, status, due_date, priority, created_date) VALUES (?,?,?,?,?,?,?)", payload)
-                con.commit(); con.close()
+                con.commit(); self.refresh_current_panel(); con.close()
                 log_activity(pid, CURRENT_USER_NAME, f"Auto planned {len(payload)} tasks for project")
                 if refresh_cb: refresh_cb()
                 t.destroy()
@@ -6890,7 +6960,7 @@ class ProjectMonitorApp:
                 pid = cursor.fetchone()[0]
                 log_activity(pid, CURRENT_USER_NAME, f"Updated task '{task_title}' to {new_status}")
                 
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 self.refresh_current_page(sync=False)
                 messagebox.showinfo("Success", "Status Updated")
@@ -6959,7 +7029,7 @@ class ProjectMonitorApp:
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                 cur.execute("INSERT INTO task_comments (task_id, user_name, comment, timestamp) VALUES (?,?,?,?)",
                             (task_id, CURRENT_USER_NAME, txt, ts))
-                con.commit(); con.close()
+                con.commit(); self.refresh_current_panel(); con.close()
                 comment_entry.delete(0, END)
                 refresh_comments()
             except Exception as e:
@@ -7011,7 +7081,7 @@ class ProjectMonitorApp:
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                 cur.execute("INSERT INTO task_attachments (task_id, file_path, uploaded_by, timestamp) VALUES (?,?,?,?)",
                             (task_id, target, CURRENT_USER_NAME, ts))
-                con.commit(); con.close()
+                con.commit(); self.refresh_current_panel(); con.close()
                 refresh_att()
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to attach: {e}")
@@ -7034,7 +7104,7 @@ class ProjectMonitorApp:
 
     def refresh_tasks(self, reset_page=False):
         debug_log("DEBUG: Refreshing Management Task Cards...")
-        if not hasattr(self, 'task_list_container'): return
+        if not hasattr(self, 'task_list_container') or not self.task_list_container.winfo_exists(): return
         
         for w in self.task_list_container.winfo_children():
             w.destroy()
@@ -7084,6 +7154,7 @@ class ProjectMonitorApp:
             
             # Responsive Grid
             self.root.update_idletasks()
+            if not hasattr(self, 'task_list_container') or not self.task_list_container.winfo_exists(): return
             w = self.root.winfo_width()
             cols = 1 if w < 900 else (2 if w < 1400 else 3)
             for i in range(cols):
@@ -7219,7 +7290,7 @@ class ProjectMonitorApp:
                     pid, title = cur.fetchone()
                     log_activity(pid, CURRENT_USER_NAME, f"Bulk update: Task '{title}' set to {status}")
                 
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 
                 log_audit(CURRENT_USER_NAME, "Bulk Task Update", f"Updated {len(tids)} tasks to {status}")
@@ -7281,7 +7352,7 @@ class ProjectMonitorApp:
                 else:
                     log_activity(pid, CURRENT_USER_NAME, f"Reassigned task '{title}' to {user}")
                 
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 
                 if is_assign:
@@ -7307,7 +7378,7 @@ class ProjectMonitorApp:
             cur = con.cursor()
             for tid in tids:
                 cur.execute("UPDATE tasks SET assigned_to='' WHERE id=?", (tid,))
-            con.commit(); con.close()
+            con.commit(); self.refresh_current_panel(); con.close()
             try:
                 for tid in tids:
                     log_audit(CURRENT_USER_NAME, "Task Unassigned", f"Cleared assignee for task {tid}")
@@ -7338,7 +7409,7 @@ class ProjectMonitorApp:
                     pid, title = cur.fetchone()
                     log_activity(pid, CURRENT_USER_NAME, f"Marked task '{title}' as URGENT")
                 
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 
                 log_audit(CURRENT_USER_NAME, "Tasks Marked Urgent", f"Marked {len(tids)} tasks as High priority")
@@ -7517,7 +7588,7 @@ class ProjectMonitorApp:
                 cur.execute("INSERT INTO tasks (title, project_id, assigned_to, status, due_date, priority, created_date) VALUES (?,?,?,?,?,?,?)",
                             (title, pid, leader, "Pending", e_date.get(), c_prio.get(), datetime.now().strftime("%Y-%m-%d")))
                 log_activity(pid, CURRENT_USER_NAME, f"Assigned milestone task to Leader: {leader}")
-                con.commit(); con.close()
+                con.commit(); self.refresh_current_panel(); con.close()
                 log_audit(CURRENT_USER_NAME, "Leader Task Assigned", f"Assigned milestone for {c_proj.get()} to {leader}")
                 notify_user(leader, f"New Milestone Task: {title}")
                 self.refresh_tasks(); t.destroy()
@@ -7587,7 +7658,7 @@ class ProjectMonitorApp:
                     messagebox.showinfo("Success", f"Password reset for {uname}")
                 else:
                     cur.execute("UPDATE users SET reset_requested = 0 WHERE username = ?", (uname,))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 t.destroy()
                 self.show_notifications()
@@ -7624,7 +7695,7 @@ class ProjectMonitorApp:
                 con = sqlite3.connect(get_db_path())
                 cur = con.cursor()
                 cur.execute("UPDATE leave_requests SET status = ? WHERE id = ?", (status, lid))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 messagebox.showinfo("Success", f"Leave {status}")
                 t.destroy()
@@ -7664,6 +7735,32 @@ class ProjectMonitorApp:
                         relief=FLAT, bd=0, padx=12, pady=6, cursor="hand2",
                         command=lambda s=st: [self._leave_filter.set(s), self.load_leave_requests()])
             btn.pack(side=LEFT, padx=4)
+
+        # Metrics Row
+        metrics_row = Frame(self.content_area, bg=CONTENT_BG)
+        metrics_row.pack(fill=X, padx=px, pady=(0, 20))
+
+        def create_metric_card(parent, title, val, color):
+            c = Frame(parent, bg=CARD_BG, padx=20, pady=20, highlightbackground=BORDER_COLOR, highlightthickness=1)
+            c.pack(side=LEFT, expand=True, fill=X, padx=(0, 15))
+            Label(c, text=title.upper(), font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W)
+            Label(c, text=str(val), font=('Segoe UI', 24, 'bold'), bg=CARD_BG, fg=color).pack(anchor=W, pady=(8, 0))
+            return c
+
+        try:
+            con_m = sqlite3.connect(get_db_path())
+            cur_m = con_m.cursor()
+            cur_m.execute("SELECT COUNT(*), SUM(CASE WHEN status='Pending' THEN 1 ELSE 0 END), SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) FROM leave_requests")
+            counts = cur_m.fetchone()
+            total_req, pending_req, approved_req = counts[0] or 0, counts[1] or 0, counts[2] or 0
+            con_m.close()
+        except Exception as e:
+            debug_log(f"DEBUG: Failed to fetch leave metrics: {e}")
+            total_req, pending_req, approved_req = 0, 0, 0
+
+        create_metric_card(metrics_row, "Total Requests", total_req, ACCENT_BLUE)
+        create_metric_card(metrics_row, "Pending Approval", pending_req, ACCENT_ORANGE)
+        create_metric_card(metrics_row, "Approved Leaves", approved_req, ACCENT_GREEN)
 
         # Main scrollable area
         wrapper = Frame(self.content_area, bg=CONTENT_BG)
@@ -7766,7 +7863,7 @@ class ProjectMonitorApp:
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 cur.execute("INSERT INTO audit_logs (timestamp, user, action, details) VALUES (?,?,?,?)",
                             (ts, CURRENT_USER_NAME, f"Leave {status}", f"id={lid}; comment={comment}"))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 self.load_leave_requests()
             except Exception as e:
@@ -9346,7 +9443,7 @@ class ProjectMonitorApp:
                     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     con.execute("INSERT INTO audit_logs (timestamp, user, action, details) VALUES (?, ?, ?, ?)", 
                                (ts, CURRENT_USER_NAME, "Reset Approved", f"Approved for {email}. Comment: {txt.get()}"))
-                    con.commit(); con.close()
+                    con.commit(); self.refresh_current_panel(); con.close()
                     dialog.destroy(); refresh_callback()
                     messagebox.showinfo("Success", "Reset approved.")
                 except Exception as e: messagebox.showerror("Error", str(e))
@@ -9361,7 +9458,7 @@ class ProjectMonitorApp:
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 con.execute("INSERT INTO audit_logs (timestamp, user, action, details) VALUES (?, ?, ?, ?)", 
                            (ts, CURRENT_USER_NAME, "Reset Rejected", f"Rejected for {email}"))
-                con.commit(); con.close(); refresh_callback()
+                con.commit(); self.refresh_current_panel(); con.close(); refresh_callback()
                 messagebox.showinfo("Success", "Reset rejected.")
             except Exception as e: messagebox.showerror("Error", str(e))
 
@@ -9975,7 +10072,7 @@ class ProjectMonitorApp:
                 SELECT t.id, t.title, p.name, t.assigned_to, t.status 
                 FROM tasks t 
                 JOIN projects p ON t.project_id = p.id 
-                WHERE (t.status = 'Pending Approval' OR t.status = 'Review')
+                WHERE (t.status = 'Pending Approval' OR t.status = 'Review' OR t.status = 'Submit for Review')
                 AND p.team_leader LIKE ?
             """, (f"%{CURRENT_USER_NAME}%",))
             tasks = cur.fetchall()
@@ -10000,14 +10097,11 @@ class ProjectMonitorApp:
                         c = sqlite3.connect(get_db_path())
                         cu = c.cursor()
                         cu.execute("UPDATE tasks SET status='Completed', completed_date=? WHERE id=?", (datetime.now().strftime("%Y-%m-%d"), t_id))
-                        c.commit(); c.close()
+                        c.commit(); self.refresh_current_panel(); c.close()
                         self.load_review_tasks()
                         messagebox.showinfo("Approved", f"Task #{t_id} marked as Completed.")
 
-                    Button(actions, text="APPROVE", bg=ACCENT_GREEN, fg=WHITE, font=('Segoe UI', 8, 'bold'),
-                           relief=FLAT, padx=15, pady=8, cursor="hand2", command=approve).pack(side=LEFT, padx=5)
-                    Button(actions, text="REJECT", bg=ACCENT_RED, fg=WHITE, font=('Segoe UI', 8, 'bold'),
-                           relief=FLAT, padx=15, pady=8, cursor="hand2", command=lambda t_id=tid: self._task_reject_feedback(t_id)).pack(side=LEFT, padx=5)
+
                     
                     self._apply_hover_effect(card, ACCENT_BLUE)
 
@@ -10034,7 +10128,7 @@ class ProjectMonitorApp:
                                 c = sqlite3.connect(get_db_path())
                                 cu = c.cursor()
                                 cu.execute("UPDATE tasks SET status='In Progress', review_comments=? WHERE id=?", (comment, t_id))
-                                c.commit(); c.close()
+                                c.commit(); self.refresh_current_panel(); c.close()
                                 rej_win.destroy()
                                 self.load_review_tasks()
                                 messagebox.showinfo("Rejected", "Feedback sent to contributor.")
@@ -10123,7 +10217,7 @@ class ProjectMonitorApp:
                             c = sqlite3.connect(get_db_path())
                             cu = c.cursor()
                             cu.execute("UPDATE leave_requests SET status=? WHERE id=?", (s, l_id))
-                            c.commit(); c.close()
+                            c.commit(); self.refresh_current_panel(); c.close()
                             self.load_team_leaves()
 
                         Button(btns, text="APPROVE", bg=ACCENT_GREEN, fg=WHITE, font=('Segoe UI', 8, 'bold'),
@@ -10141,7 +10235,7 @@ class ProjectMonitorApp:
                             c = sqlite3.connect(get_db_path())
                             cu = c.cursor()
                             cu.execute("UPDATE leave_requests SET status=? WHERE id=?", (s, l_id))
-                            c.commit(); c.close()
+                            c.commit(); self.refresh_current_panel(); c.close()
                             self.load_team_leaves()
 
                         Button(btns, text="APPROVE", bg=ACCENT_GREEN, fg=WHITE, font=('Segoe UI', 8, 'bold'),
@@ -10265,7 +10359,7 @@ class ProjectMonitorApp:
                                     c = sqlite3.connect(get_db_path())
                                     cu = c.cursor()
                                     cu.execute("UPDATE queries SET response=?, status='Closed' WHERE id=?", (msg, q_id))
-                                    c.commit(); c.close()
+                                    c.commit(); self.refresh_current_panel(); c.close()
                                     resp_win.destroy()
                                     self.load_team_queries()
                                     messagebox.showinfo("Resolved", "Response sent to team member.")
@@ -10357,7 +10451,7 @@ class ProjectMonitorApp:
                         # Corrected columns to match schema: member_name, leave_type
                         cu.execute("INSERT INTO leave_requests (member_name, leave_type, start_date, end_date, reason, status) VALUES (?, ?, ?, ?, ?, ?)",
                                   (CURRENT_USER_NAME, "General", start_val, end_val, reason_val, "Pending"))
-                        c.commit(); c.close()
+                        c.commit(); self.refresh_current_panel(); c.close()
                         d.destroy()
                         messagebox.showinfo("Success", "Leave request submitted.")
                         self.load_my_leaves()
@@ -11148,7 +11242,7 @@ class ProjectMonitorApp:
             cols = [r[1] for r in cur.fetchall()]
             name_col = "employee_name" if "employee_name" in cols else "name"
             cur.execute(f"INSERT INTO attendance ({name_col}, date, clock_in, status) VALUES (?, ?, ?, ?)", (CURRENT_USER_NAME, today, now, 'Present'))
-            con.commit(); con.close()
+            con.commit(); self.refresh_current_panel(); con.close()
             self.refresh_emp_attendance()
         except Exception as e:
             messagebox.showerror("Error", f"Clock-in failed: {e}")
@@ -11163,7 +11257,7 @@ class ProjectMonitorApp:
             cols = [r[1] for r in cur.fetchall()]
             name_col = "employee_name" if "employee_name" in cols else "name"
             cur.execute(f"UPDATE attendance SET clock_out=? WHERE {name_col}=? AND date=?", (now, CURRENT_USER_NAME, today))
-            con.commit(); con.close()
+            con.commit(); self.refresh_current_panel(); con.close()
             self.refresh_emp_attendance()
         except Exception as e:
             messagebox.showerror("Error", f"Clock-out failed: {e}")
@@ -11344,7 +11438,7 @@ class ProjectMonitorApp:
                 cur = con.cursor()
                 cur.execute("INSERT INTO queries (user_name, subject, message, status) VALUES (?,?,?,?)",
                             (CURRENT_USER_NAME, subj, desc, 'Open'))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 messagebox.showinfo("Success", "Query raised successfully")
                 w.destroy()
@@ -11418,7 +11512,7 @@ class ProjectMonitorApp:
                 cur = con.cursor()
                 cur.execute("INSERT INTO leave_requests (member_name, leave_type, start_date, end_date, reason, status) VALUES (?,?,?,?,?,?)",
                             (CURRENT_USER_NAME, l_type, start, end, reason, 'Pending'))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 messagebox.showinfo("Success", "Leave request submitted")
                 w.destroy()
@@ -11502,7 +11596,7 @@ class ProjectMonitorApp:
                             (CURRENT_USER_NAME, dt, t_id, hrs, note, ts))
                 cur.execute("INSERT OR REPLACE INTO attendance (name, date, status, clock_in) VALUES (?,?,?,?)",
                             (CURRENT_USER_NAME, dt, 'Present', tm))
-                con.commit()
+                con.commit(); self.refresh_current_panel()
                 con.close()
                 messagebox.showinfo("Success", "Work logged and attendance marked.")
                 w.destroy()
