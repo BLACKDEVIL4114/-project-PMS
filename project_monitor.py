@@ -2378,7 +2378,25 @@ class ProjectMonitorApp:
             active_projects = 0
             total_tasks = active_tasks + overdue_tasks
             delayed_tasks = overdue_tasks
+            # Fetch active projects and progress percentages for the team leader's Gantt Chart
             project_progress_data = []
+            try:
+                cursor.execute("""
+                    SELECT id, name, team_leader, manager, start_date, end_date, status 
+                    FROM projects 
+                    WHERE (lower(team_leader) LIKE ? OR lower(team_leader) = ?) AND (status='Ongoing' OR status='Delayed')
+                """, (f"%{CURRENT_USER_NAME.lower()}%", CURRENT_USER_NAME.lower()))
+                active_projs_rows = cursor.fetchall()
+                for pid, pname, leader, mgr, sd_str, ed_str, p_status in active_projs_rows:
+                    cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id=?", (pid,))
+                    tot = cursor.fetchone()[0] or 0
+                    cursor.execute("SELECT COUNT(*) FROM tasks WHERE project_id=? AND status='Completed'", (pid,))
+                    done = cursor.fetchone()[0] or 0
+                    prog = int((done/tot)*100) if tot > 0 else 0
+                    project_progress_data.append((pid, pname, leader, mgr, sd_str or '2026-05-15', ed_str or '2026-06-15', prog, p_status))
+            except Exception as e:
+                debug_log(f"DEBUG: Error fetching project progress for Gantt: {e}")
+
             task_dist = {}
             
         else:
@@ -2540,11 +2558,131 @@ class ProjectMonitorApp:
             make_status_card(cards_wrap, 1, "IN PROGRESS", active_tasks, ACCENT_ORANGE)
             make_status_card(cards_wrap, 2, "COMPLETED", completed_this_week, ACCENT_GREEN)
             
-            # 2. Project Overview (Placeholder or simple chart)
+            # 2. Project Overview (Dynamic Gantt Chart)
             overview_f = Frame(left_col, bg=CARD_BG, padx=20, pady=20, highlightbackground=BORDER_COLOR, highlightthickness=1)
             overview_f.pack(fill=BOTH, expand=True)
             Label(overview_f, text="PROJECT OVERVIEW", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 15))
-            Label(overview_f, text="Gantt chart visualization will appear here.", font=('Segoe UI', 10), bg=CARD_BG, fg=MUTED_TEXT).pack(pady=40)
+            
+            canvas_gantt = Canvas(overview_f, bg=CARD_BG, height=220, highlightthickness=0)
+            canvas_gantt.pack(fill=BOTH, expand=True)
+            
+            def draw_gantt(event=None):
+                canvas_gantt.delete("all")
+                W = canvas_gantt.winfo_width()
+                H = canvas_gantt.winfo_height()
+                
+                if W < 10 or H < 10:
+                    # Canvas is not yet mapped or too small, draw loading state
+                    canvas_gantt.create_text(10, 10, text="Drawing timeline...", font=('Segoe UI', 10), fill=MUTED_TEXT, anchor="nw")
+                    return
+                    
+                if not project_progress_data:
+                    canvas_gantt.create_text(W/2, H/2, text="No active projects assigned to your team.", 
+                                             font=('Segoe UI', 11), fill=MUTED_TEXT, anchor="center")
+                    return
+                
+                # Parse project dates
+                from datetime import datetime, timedelta
+                parsed_projects = []
+                min_date = None
+                max_date = None
+                
+                for pid, pname, leader, mgr, sd_str, ed_str, prog, p_status in project_progress_data:
+                    try:
+                        sd = datetime.strptime(sd_str.strip(), "%Y-%m-%d")
+                    except:
+                        sd = datetime.now()
+                    try:
+                        ed = datetime.strptime(ed_str.strip(), "%Y-%m-%d")
+                    except:
+                        ed = sd + timedelta(days=30)
+                        
+                    if sd > ed:
+                        ed = sd + timedelta(days=30)
+                        
+                    parsed_projects.append({
+                        'name': pname,
+                        'start': sd,
+                        'end': ed,
+                        'prog': prog,
+                        'status': p_status
+                    })
+                    
+                    if min_date is None or sd < min_date:
+                        min_date = sd
+                    if max_date is None or ed > max_date:
+                        max_date = ed
+                        
+                if min_date is None or max_date is None:
+                    min_date = datetime.now() - timedelta(days=5)
+                    max_date = datetime.now() + timedelta(days=25)
+                    
+                # Pad timeline by 3 days on both ends for visual balance
+                timeline_start = min_date - timedelta(days=3)
+                timeline_end = max_date + timedelta(days=3)
+                total_days = (timeline_end - timeline_start).days
+                if total_days <= 0: total_days = 30
+                
+                margin_left = 180
+                margin_right = 30
+                margin_top = 40
+                margin_bottom = 20
+                draw_width = W - margin_left - margin_right
+                
+                row_height = 45
+                
+                # Draw weekly grid lines & date headers
+                step_days = max(1, int(total_days / 5))
+                for i in range(0, total_days + 1, step_days):
+                    grid_date = timeline_start + timedelta(days=i)
+                    x = margin_left + (i / total_days) * draw_width
+                    canvas_gantt.create_line(x, margin_top, x, H - margin_bottom, fill="#2a3352", dash=(2, 2))
+                    date_str = grid_date.strftime("%b %d")
+                    canvas_gantt.create_text(x, margin_top - 15, text=date_str, font=('Segoe UI', 8), fill="#8a99ad", anchor="n")
+                    
+                # Horizontal timeline separator
+                canvas_gantt.create_line(margin_left, margin_top, W - margin_right, margin_top, fill="#2e3760")
+                
+                # Render each project bar
+                for idx, p in enumerate(parsed_projects):
+                    y_top = margin_top + idx * row_height + 15
+                    y_bottom = y_top + 18
+                    
+                    # Project Label (Left-aligned)
+                    label_name = p['name']
+                    if len(label_name) > 22:
+                        label_name = label_name[:20] + "..."
+                    canvas_gantt.create_text(20, (y_top + y_bottom)/2, text=label_name, 
+                                             font=('Segoe UI', 10, 'bold'), fill=TEXT_WHITE, anchor="w")
+                                             
+                    # Calculate horizontal positions relative to timeline dates
+                    days_from_start = (p['start'] - timeline_start).days
+                    duration_days = (p['end'] - p['start']).days
+                    
+                    bar_x1 = margin_left + (days_from_start / total_days) * draw_width
+                    bar_x2 = margin_left + ((days_from_start + duration_days) / total_days) * draw_width
+                    
+                    # Safety clamps
+                    bar_x1 = max(margin_left, min(bar_x1, W - margin_right))
+                    bar_x2 = max(margin_left, min(bar_x2, W - margin_right))
+                    
+                    # Draw base bar background track
+                    canvas_gantt.create_rectangle(bar_x1, y_top, bar_x2, y_bottom, fill="#1c223d", outline="#2e3760", width=1)
+                    
+                    # Draw actual progress fill
+                    prog_x = bar_x1 + (p['prog'] / 100) * (bar_x2 - bar_x1)
+                    if p['prog'] > 0:
+                        fill_color = ACCENT_BLUE if p['status'] == 'Ongoing' else (ACCENT_RED if p['status'] == 'Delayed' else ACCENT_GREEN)
+                        canvas_gantt.create_rectangle(bar_x1, y_top, prog_x, y_bottom, fill=fill_color, outline="")
+                        
+                    # Numeric completion indicator inside/next to the bar
+                    txt_color = TEXT_WHITE if p['prog'] > 50 else MUTED_TEXT
+                    anchor_pos = "e" if p['prog'] > 50 else "w"
+                    text_x = prog_x - 8 if p['prog'] > 50 else prog_x + 8
+                    canvas_gantt.create_text(text_x, (y_top + y_bottom)/2, text=f"{p['prog']}%", 
+                                             font=('Segoe UI', 8, 'bold'), fill=txt_color, anchor=anchor_pos)
+            
+            canvas_gantt.bind("<Configure>", draw_gantt)
             
             # --- RIGHT COLUMN ---
             # 1. Current Sprints (Donut Chart)
@@ -5993,9 +6131,9 @@ class ProjectMonitorApp:
         f.pack(fill=BOTH, expand=True, padx=20, pady=15)
         con = sqlite3.connect(get_db_path())
         cur = con.cursor()
-        cur.execute("SELECT name FROM employee WHERE role IN ('Team Member','Senior Employee')")
+        cur.execute("SELECT name FROM employee WHERE lower(role) IN ('team member','senior employee')")
         emp_names = [r[0] for r in cur.fetchall()]
-        cur.execute("SELECT name FROM employee WHERE role='Team Leader'")
+        cur.execute("SELECT name FROM employee WHERE lower(role)='team leader'")
         tl_names = [r[0] for r in cur.fetchall()]
         con.close()
         Label(f, text="Employee", bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W)
@@ -6082,7 +6220,7 @@ class ProjectMonitorApp:
         try:
             con = sqlite3.connect(get_db_path())
             cur = con.cursor()
-            cur.execute("SELECT name FROM employee WHERE (reporting_manager IS NULL OR reporting_manager = '') AND role NOT IN ('Team Leader', 'Project Manager', 'admin')")
+            cur.execute("SELECT name FROM employee WHERE (reporting_manager IS NULL OR reporting_manager = '') AND lower(role) NOT IN ('team leader', 'project manager', 'admin')")
             avail = [r[0] for r in cur.fetchall()]
             con.close()
         except: avail = []
@@ -6215,7 +6353,7 @@ class ProjectMonitorApp:
                         try:
                             con_ref = sqlite3.connect(get_db_path())
                             cur_ref = con_ref.cursor()
-                            cur_ref.execute("SELECT name FROM employee WHERE (reporting_manager IS NULL OR reporting_manager = '') AND role NOT IN ('Team Leader', 'Project Manager', 'admin')")
+                            cur_ref.execute("SELECT name FROM employee WHERE (reporting_manager IS NULL OR reporting_manager = '') AND lower(role) NOT IN ('team leader', 'project manager', 'admin')")
                             new_avail = [r[0] for r in cur_ref.fetchall()]
                             con_ref.close()
                             c_pick.config(values=new_avail)
@@ -7643,16 +7781,33 @@ class ProjectMonitorApp:
 
         con = sqlite3.connect(get_db_path()); cur = con.cursor()
         role = CURRENT_USER_ROLE.lower()
+        
+        pm_tasks = []
+        pm_task_map = {}
         if role == 'team leader':
-            cur.execute("SELECT id, name FROM projects WHERE team_leader LIKE ?", (f"%{CURRENT_USER_NAME}%",))
+            # Fetch tasks assigned specifically to this Team Leader that are not completed yet
+            try:
+                cur.execute("""
+                    SELECT t.id, t.title, p.name, t.due_date, t.priority 
+                    FROM tasks t 
+                    LEFT JOIN projects p ON t.project_id = p.id 
+                    WHERE lower(t.assigned_to) = lower(?) AND t.status != 'Completed'
+                """, (CURRENT_USER_NAME,))
+                pm_tasks = cur.fetchall()
+            except Exception as e:
+                debug_log(f"DEBUG: Error fetching PM tasks: {e}")
+                
+            cur.execute("SELECT id, name FROM projects WHERE lower(team_leader) LIKE ?", (f"%{CURRENT_USER_NAME.lower()}%",))
             projects = cur.fetchall()
-            cur.execute("SELECT name FROM employee WHERE reporting_manager = ? OR role IN ('Team Member', 'Employee')", (CURRENT_USER_NAME,))
+            cur.execute("SELECT name FROM employee WHERE reporting_manager = ? OR lower(role) IN ('team member', 'employee')", (CURRENT_USER_NAME,))
             members = [r[0] for r in cur.fetchall()]
         else:
             cur.execute("SELECT id, name FROM projects"); projects = cur.fetchall()
-            cur.execute("SELECT name FROM employee"); members = [r[0] for r in cur.fetchall()]
+            cur.execute("SELECT name FROM employee WHERE lower(role) NOT IN ('admin', 'project manager')"); members = [r[0] for r in cur.fetchall()]
         con.close()
+        
         project_map = {name: pid for pid, name in projects}; project_names = list(project_map.keys())
+        pm_task_map = {f"{r[1]} ({r[2]})": r for r in pm_tasks}
 
         def make_field(parent, label):
             f = Frame(parent, bg=CARD_BG)
@@ -7660,6 +7815,14 @@ class ProjectMonitorApp:
             Label(f, text=label.upper(), font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(0, 5))
             w = Frame(f, bg="#1a2035", highlightbackground=BORDER_COLOR, highlightthickness=1)
             w.pack(fill=X); return w
+
+        # Task Selection from PM (Visible only to TL when there are tasks assigned to them)
+        if role == 'team leader' and pm_tasks:
+            ref_w = make_field(card, "Select Task assigned by Project Manager")
+            task_options = ["-- Create New Task --"] + list(pm_task_map.keys())
+            c_ref = ttk.Combobox(ref_w, values=task_options, font=('Segoe UI', 10), state="readonly")
+            c_ref.pack(fill=X, padx=8, pady=8)
+            c_ref.set("-- Create New Task --")
 
         p_w = make_field(card, "Project Selection")
         c_proj = ttk.Combobox(p_w, values=project_names, font=('Segoe UI', 10), state="readonly")
@@ -7670,7 +7833,7 @@ class ProjectMonitorApp:
         e_title = Entry(t_w, font=('Segoe UI', 11), bg="#1a2035", fg=WHITE, relief=FLAT, insertbackground=WHITE)
         e_title.pack(fill=X, padx=12, pady=10)
 
-        a_w = make_field(card, "Assignee")
+        a_w = make_field(card, "Assignee (Team Member)")
         c_user = ttk.Combobox(a_w, values=members, font=('Segoe UI', 10), state="readonly")
         c_user.pack(fill=X, padx=8, pady=8)
         if members: c_user.set(members[0])
@@ -7684,23 +7847,92 @@ class ProjectMonitorApp:
         c_prio = ttk.Combobox(pr_w, values=["High", "Medium", "Low"], font=('Segoe UI', 10), state="readonly")
         c_prio.set("Medium"); c_prio.pack(fill=X, padx=8, pady=8)
 
+        # Dynamic binding to autofill PM task details
+        if role == 'team leader' and pm_tasks:
+            def on_task_ref_selected(event):
+                val = c_ref.get()
+                if val == "-- Create New Task --":
+                    e_title.config(state="normal")
+                    e_title.delete(0, END)
+                    c_proj.config(state="readonly")
+                else:
+                    task_row = pm_task_map[val] # (id, title, proj_name, due_date, priority)
+                    e_title.config(state="normal")
+                    e_title.delete(0, END)
+                    e_title.insert(0, task_row[1])
+                    e_title.config(state="disabled") # Lock it
+                    
+                    if task_row[2] in project_names:
+                        c_proj.config(state="readonly")
+                        c_proj.set(task_row[2])
+                    c_proj.config(state="disabled") # Lock project
+                    
+                    e_date.delete(0, END)
+                    e_date.insert(0, task_row[3] or "")
+                    
+                    if task_row[4] in ["High", "Medium", "Low"]:
+                        c_prio.set(task_row[4])
+                        
+            c_ref.bind("<<ComboboxSelected>>", on_task_ref_selected)
+
         def save():
             try:
+                # Resolve title whether enabled or disabled
                 title = e_title.get().strip()
                 if not title: raise Exception("Please enter a task title")
-                pid = project_map.get(c_proj.get())
+                
+                # Retrieve from combo even if disabled
+                proj_name = c_proj.get()
+                pid = project_map.get(proj_name)
                 if not pid: raise Exception("Select a valid project")
+                
                 assignee = c_user.get()
+                if not assignee: raise Exception("Please select a team member to assign this task")
+                
                 con = sqlite3.connect(get_db_path()); cur = con.cursor()
-                cur.execute("INSERT INTO tasks (title, project_id, assigned_to, status, due_date, priority, created_date) VALUES (?,?,?,?,?,?,?)",
-                            (title, pid, assignee, "Pending", e_date.get(), c_prio.get(), datetime.now().strftime("%Y-%m-%d")))
                 
-                # Optimized: Do all database operations in a single connection and transaction to avoid OneDrive sync locks
+                # Uniqueness Check: Prevent duplicate task title under the same project
+                # Exclude CURRENT_USER_NAME since they might be forwarding a PM-assigned task currently held by them.
+                cur.execute("""
+                    SELECT assigned_to FROM tasks 
+                    WHERE lower(title) = lower(?) AND project_id = ? AND lower(assigned_to) != lower(?)
+                """, (title, pid, CURRENT_USER_NAME))
+                existing = cur.fetchone()
+                if existing:
+                    con.close()
+                    raise Exception(f"The task '{title}' is already assigned to {existing[0]}!")
+                
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                cur.execute("INSERT INTO activity_timeline (project_id, user_name, action, timestamp) VALUES (?,?,?,?)", 
-                               (pid, CURRENT_USER_NAME, f"Created new task: '{title}' assigned to {assignee}", ts))
                 
-                if assignee:
+                is_update = False
+                task_id_to_update = None
+                if role == 'team leader' and pm_tasks:
+                    ref_val = c_ref.get()
+                    if ref_val != "-- Create New Task --":
+                        is_update = True
+                        task_id_to_update = pm_task_map[ref_val][0]
+                
+                if is_update:
+                    # PM Task assigned to Employee: UPDATE the task's assignee from TL to Employee
+                    cur.execute("""
+                        UPDATE tasks 
+                        SET assigned_to = ?, status = 'Pending', due_date = ?, priority = ?, created_date = ? 
+                        WHERE id = ?
+                    """, (assignee, e_date.get(), c_prio.get(), datetime.now().strftime("%Y-%m-%d"), task_id_to_update))
+                    
+                    cur.execute("INSERT INTO activity_timeline (project_id, user_name, action, timestamp) VALUES (?,?,?,?)", 
+                                   (pid, CURRENT_USER_NAME, f"Assigned task '{title}' (from PM) to {assignee}", ts))
+                    cur.execute("INSERT INTO audit_logs (timestamp, user, action, details) VALUES (?,?,?,?)", 
+                                   (ts, CURRENT_USER_NAME, "Task Forwarded", f"Forwarded PM task '{title}' to {assignee}"))
+                    cur.execute("INSERT INTO notifications (user, message, timestamp) VALUES (?,?,?)", 
+                                   (assignee, f"New Task Assigned: {title}", ts))
+                else:
+                    # Standard INSERT for a new task
+                    cur.execute("INSERT INTO tasks (title, project_id, assigned_to, status, due_date, priority, created_date) VALUES (?,?,?,?,?,?,?)",
+                                (title, pid, assignee, "Pending", e_date.get(), c_prio.get(), datetime.now().strftime("%Y-%m-%d")))
+                    
+                    cur.execute("INSERT INTO activity_timeline (project_id, user_name, action, timestamp) VALUES (?,?,?,?)", 
+                                   (pid, CURRENT_USER_NAME, f"Created new task: '{title}' assigned to {assignee}", ts))
                     cur.execute("INSERT INTO audit_logs (timestamp, user, action, details) VALUES (?,?,?,?)", 
                                    (ts, CURRENT_USER_NAME, "Task Assigned", f"Assigned '{title}' to {assignee}"))
                     cur.execute("INSERT INTO notifications (user, message, timestamp) VALUES (?,?,?)", 
@@ -7708,7 +7940,7 @@ class ProjectMonitorApp:
                 
                 con.commit(); con.close()
                 self.refresh_tasks(); t.destroy()
-                messagebox.showinfo("Success", f"Task '{title}' has been assigned.")
+                messagebox.showinfo("Success", f"Task '{title}' has been successfully assigned to {assignee}.")
             except Exception as e: messagebox.showerror("Error", str(e))
 
         btn = Button(scroll_frame, text="ASSIGN TASK", font=('Segoe UI', 10, 'bold'), bg=ACCENT_BLUE, fg=WHITE,
@@ -7737,7 +7969,7 @@ class ProjectMonitorApp:
         card.pack(fill=BOTH, expand=True)
         con = sqlite3.connect(get_db_path()); cur = con.cursor()
         cur.execute("SELECT id, name FROM projects"); projects = cur.fetchall()
-        cur.execute("SELECT name FROM employee WHERE role = 'Team Leader'"); leaders = [r[0] for r in cur.fetchall()]
+        cur.execute("SELECT name FROM employee WHERE lower(role) = 'team leader'"); leaders = [r[0] for r in cur.fetchall()]
         con.close()
         project_map = {name: pid for pid, name in projects}; project_names = list(project_map.keys())
         def make_field(parent, label):
@@ -7769,6 +8001,14 @@ class ProjectMonitorApp:
                 if not pid: raise Exception("Select a valid project")
                 leader = c_user.get(); title = f"Management: {c_proj.get()} Milestone"
                 con = sqlite3.connect(get_db_path()); cur = con.cursor()
+                
+                # Prevent duplicate milestone assignment
+                cur.execute("SELECT assigned_to FROM tasks WHERE lower(title) = lower(?) AND project_id = ?", (title, pid))
+                existing = cur.fetchone()
+                if existing:
+                    con.close()
+                    raise Exception(f"This milestone has already been assigned to {existing[0]}!")
+                
                 cur.execute("UPDATE projects SET team_leader=?, default_assignee=? WHERE id=?", (leader, leader, pid))
                 cur.execute("INSERT INTO tasks (title, project_id, assigned_to, status, due_date, priority, created_date) VALUES (?,?,?,?,?,?,?)",
                             (title, pid, leader, "Pending", e_date.get(), c_prio.get(), datetime.now().strftime("%Y-%m-%d")))
@@ -8108,7 +8348,7 @@ class ProjectMonitorApp:
         try:
             con = sqlite3.connect(get_db_path())
             cursor = con.cursor()
-            cursor.execute("SELECT name FROM employee WHERE role='Team Leader'")
+            cursor.execute("SELECT name FROM employee WHERE lower(role)='team leader'")
             tls = [r[0] for r in cursor.fetchall()]
 
             if not tls:
@@ -11009,7 +11249,7 @@ class ProjectMonitorApp:
                     SELECT name FROM employee 
                     WHERE reporting_manager = ?
                     AND name != ?
-                    AND role NOT IN ('Team Leader', 'Project Manager', 'admin')
+                    AND lower(role) NOT IN ('team leader', 'project manager', 'admin')
                 """, (user_mgr, CURRENT_USER_NAME))
             else:
                 cur.execute("SELECT name FROM employee WHERE 1=0") # Empty list if no manager
