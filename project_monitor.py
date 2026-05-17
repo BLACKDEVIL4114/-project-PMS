@@ -9698,7 +9698,7 @@ class ProjectMonitorApp:
             
             top = Frame(f, bg=CARD_BG)
             top.pack(fill=X)
-            Label(top, text=icon, font=('Segoe UI Emoji', 12), bg=CARD_BG).pack(side=LEFT)
+            Label(top, text=icon, font=('Segoe UI Emoji', 12), bg=CARD_BG, fg=color).pack(side=LEFT)
             Label(top, text=title.upper(), font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(side=LEFT, padx=10)
             
             Label(f, text=str(val), font=('Segoe UI', 32, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(15, 5))
