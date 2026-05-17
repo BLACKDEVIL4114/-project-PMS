@@ -1576,7 +1576,7 @@ class ProjectMonitorApp:
 
         if sync:
             if hasattr(self, 'btn_refresh'):
-                self.btn_refresh.config(text="🔄 Syncing...", state=DISABLED)
+                self.btn_refresh.config(text="⚡ Syncing...", state=DISABLED)
                 self.root.update_idletasks()
 
             def _bg_sync_thread():
@@ -2919,7 +2919,7 @@ class ProjectMonitorApp:
         # Helper to create enhanced KPI stat cards
         _CARD_ICONS = {
             "Total Projects": "📁",
-            "Active Projects": "🔄",
+            "Active Projects": "⚡",
             "Delayed Projects": "⚠️",
             "Team Leaders": "👑",
             "Total Employees": "👥",
@@ -3224,7 +3224,7 @@ class ProjectMonitorApp:
             "TOTAL PROJECTS": "📁",
             "TOTAL EMPLOYEES": "👥",
             "TEAM LEADERS": "👑",
-            "ACTIVE PROJECTS": "🔄",
+            "ACTIVE PROJECTS": "⚡",
             "DELAYED PROJECTS": "⚠️"
         }
         icon_char = icons.get(title.upper(), "📊")
