@@ -11571,7 +11571,7 @@ class ProjectMonitorApp:
         self.refresh_emp_queries()
 
     def refresh_emp_queries(self):
-        if not hasattr(self, 'query_container'): return
+        if not hasattr(self, 'query_container') or not self.query_container.winfo_exists(): return
         for widget in self.query_container.winfo_children(): widget.destroy()
         search = self.query_search_var.get().lower()
         
@@ -11926,7 +11926,7 @@ class ProjectMonitorApp:
                 cur = con.cursor()
                 cur.execute("INSERT INTO queries (user_name, subject, message, status) VALUES (?,?,?,?)",
                             (CURRENT_USER_NAME, subj, desc, 'Open'))
-                con.commit(); self.refresh_current_panel()
+                con.commit()
                 con.close()
                 messagebox.showinfo("Success", "Query raised successfully")
                 w.destroy()
@@ -12000,7 +12000,7 @@ class ProjectMonitorApp:
                 cur = con.cursor()
                 cur.execute("INSERT INTO leave_requests (member_name, leave_type, start_date, end_date, reason, status) VALUES (?,?,?,?,?,?)",
                             (CURRENT_USER_NAME, l_type, start, end, reason, 'Pending'))
-                con.commit(); self.refresh_current_panel()
+                con.commit()
                 con.close()
                 messagebox.showinfo("Success", "Leave request submitted")
                 w.destroy()
@@ -12084,7 +12084,7 @@ class ProjectMonitorApp:
                             (CURRENT_USER_NAME, dt, t_id, hrs, note, ts))
                 cur.execute("INSERT OR REPLACE INTO attendance (name, date, status, clock_in) VALUES (?,?,?,?)",
                             (CURRENT_USER_NAME, dt, 'Present', tm))
-                con.commit(); self.refresh_current_panel()
+                con.commit()
                 con.close()
                 messagebox.showinfo("Success", "Work logged and attendance marked.")
                 w.destroy()
