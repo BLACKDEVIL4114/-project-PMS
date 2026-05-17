@@ -11542,13 +11542,6 @@ class ProjectMonitorApp:
         strip = Frame(self.content_area, bg=CONTENT_BG)
         strip.pack(fill=X, padx=px, pady=(0, 20))
         
-        self.query_search_var = StringVar()
-        ent_f = Frame(strip, bg=CARD_BG, padx=15, pady=8, highlightbackground=BORDER_COLOR, highlightthickness=1)
-        ent_f.pack(side=LEFT)
-        Label(ent_f, text="🔍", bg=CARD_BG, font=('Segoe UI', 10)).pack(side=LEFT)
-        Entry(ent_f, textvariable=self.query_search_var, bg=CARD_BG, fg=WHITE, borderwidth=0, font=('Segoe UI', 10), width=35, insertbackground=WHITE).pack(side=LEFT, padx=10)
-        self.query_search_var.trace_add("write", lambda *a: self.refresh_emp_queries())
-        
         Button(strip, text="+ RAISE NEW QUERY", bg=ACCENT_BLUE, fg=WHITE, font=('Segoe UI', 9, 'bold'), relief=FLAT, padx=20, pady=10, command=self.raise_new_query_window).pack(side=RIGHT)
 
         # Scrollable area
@@ -11573,7 +11566,7 @@ class ProjectMonitorApp:
     def refresh_emp_queries(self):
         if not hasattr(self, 'query_container') or not self.query_container.winfo_exists(): return
         for widget in self.query_container.winfo_children(): widget.destroy()
-        search = self.query_search_var.get().lower()
+        search = ""
         
         try:
             con = sqlite3.connect(get_db_path())
