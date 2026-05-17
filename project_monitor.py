@@ -4477,7 +4477,16 @@ class ProjectMonitorApp:
                         con.close()
                         
                         win.destroy()
-                        self.refresh_emp_tasks_tab()
+                        
+                        # Real-time UI refresh based on current active sub-page
+                        if hasattr(self, 'current_page'):
+                            if self.current_page == 'emp_dashboard':
+                                self.load_emp_dashboard()
+                            elif self.current_page == 'emp_my_tasks':
+                                self.refresh_emp_tasks_tab()
+                        else:
+                            self.refresh_emp_tasks_tab()
+                            
                         messagebox.showinfo("Success", "Task status updated successfully!")
                     except Exception as e:
                         messagebox.showerror("Error", f"Failed to update task: {e}")
@@ -7517,7 +7526,7 @@ class ProjectMonitorApp:
         
         # Title & Project
         Label(inner, text=title, font=('Segoe UI', 13, 'bold'), bg=CARD_BG, fg=TEXT_WHITE, wraplength=280, justify=LEFT).pack(anchor=W, pady=(10, 2))
-        Label(inner, text=f"?? {p_name or 'Independent Task'}", font=('Segoe UI', 9), bg=CARD_BG, fg=ACCENT_BLUE).pack(anchor=W)
+        Label(inner, text=f"📂 {p_name or 'Independent Task'}", font=('Segoe UI Emoji', 9), bg=CARD_BG, fg=ACCENT_BLUE).pack(anchor=W)
         
         # Divider
         Frame(inner, bg=BORDER_COLOR, height=1).pack(fill=X, pady=15)
@@ -7550,7 +7559,7 @@ class ProjectMonitorApp:
             except: pass
             
         d_color = ACCENT_RED if overdue else TEXT_SECONDARY
-        Label(bot, text=f"?? {due_date}", font=('Segoe UI', 9), bg=CARD_BG, fg=d_color).pack(side=LEFT)
+        Label(bot, text=f"📅 {due_date}", font=('Segoe UI Emoji', 9), bg=CARD_BG, fg=d_color).pack(side=LEFT)
         
         btn = Button(bot, text="MANAGE \u2192", font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=ACCENT_BLUE,
                      relief=FLAT, bd=0, padx=0, pady=0, activebackground=CARD_BG, activeforeground=WHITE,
@@ -7797,7 +7806,22 @@ class ProjectMonitorApp:
             except Exception as e:
                 debug_log(f"DEBUG: Error fetching PM tasks: {e}")
                 
-            cur.execute("SELECT id, name FROM projects WHERE lower(team_leader) LIKE ?", (f"%{CURRENT_USER_NAME.lower()}%",))
+            cur.execute("""
+                SELECT id, name FROM projects 
+                WHERE lower(team_leader) LIKE ?
+                  AND (
+                      id IN (
+                          SELECT DISTINCT project_id FROM tasks 
+                          WHERE project_id IS NOT NULL 
+                            AND lower(assigned_to) = lower(?)
+                      )
+                      OR
+                      id NOT IN (
+                          SELECT DISTINCT project_id FROM tasks 
+                          WHERE project_id IS NOT NULL
+                      )
+                  )
+            """, (f"%{CURRENT_USER_NAME.lower()}%", CURRENT_USER_NAME))
             projects = cur.fetchall()
             cur.execute("SELECT name FROM employee WHERE reporting_manager = ? OR lower(role) IN ('team member', 'employee')", (CURRENT_USER_NAME,))
             members = [r[0] for r in cur.fetchall()]
@@ -9677,13 +9701,13 @@ class ProjectMonitorApp:
         
         self._bind_canvas_scrolling(wrapper, canvas)
 
-        def create_intel_card(p, title, val, sub, color, icon="??"):
+        def create_intel_card(p, title, val, sub, color, icon="📊"):
             f = Frame(p, bg=CARD_BG, padx=25, pady=25, highlightbackground=BORDER_COLOR, highlightthickness=1)
             f.pack(side=LEFT, fill=BOTH, expand=True, padx=10)
             
             top = Frame(f, bg=CARD_BG)
             top.pack(fill=X)
-            Label(top, text=icon, font=('Segoe UI', 12), bg=CARD_BG).pack(side=LEFT)
+            Label(top, text=icon, font=('Segoe UI Emoji', 12), bg=CARD_BG, fg=color).pack(side=LEFT)
             Label(top, text=title.upper(), font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(side=LEFT, padx=10)
             
             Label(f, text=str(val), font=('Segoe UI', 32, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(15, 5))
@@ -9694,9 +9718,9 @@ class ProjectMonitorApp:
         # Row 1: KPI Grid
         r1 = Frame(grid, bg=CONTENT_BG)
         r1.pack(fill=X, pady=(0, 20))
-        create_intel_card(r1, "Efficiency", "94%", "+4.2% THIS WEEK", ACCENT_BLUE, "??")
-        create_intel_card(r1, "Focus Score", "8.8", "DEEP WORK OPTIMIZED", ACCENT_GREEN, "??")
-        create_intel_card(r1, "Reliability", "98%", "ZERO OVERDUE TASKS", ACCENT_PURPLE, "??")
+        create_intel_card(r1, "Efficiency", "94%", "+4.2% THIS WEEK", ACCENT_BLUE, "📈")
+        create_intel_card(r1, "Focus Score", "8.8", "DEEP WORK OPTIMIZED", ACCENT_GREEN, "🎯")
+        create_intel_card(r1, "Reliability", "98%", "ZERO OVERDUE TASKS", ACCENT_PURPLE, "🛡️")
 
         # Row 2: Behavioral Analysis & Risk
         r2 = Frame(grid, bg=CONTENT_BG)
@@ -10561,7 +10585,7 @@ class ProjectMonitorApp:
                     info = Frame(card, bg=CARD_BG)
                     info.pack(side=LEFT, fill=X, expand=True)
                     Label(info, text=title, font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W)
-                    Label(info, text=f"?? {pname} • Contributor: {user}", font=('Segoe UI', 9), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(4, 0))
+                    Label(info, text=f"📂 {pname} • Contributor: {user}", font=('Segoe UI Emoji', 9), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(4, 0))
                     
                     actions = Frame(card, bg=CARD_BG)
                     actions.pack(side=RIGHT)
@@ -10992,8 +11016,6 @@ class ProjectMonitorApp:
         Label(title_box, text=f"{greeting}, {CURRENT_USER_NAME}", font=('Segoe UI', 26, 'bold'), bg=CONTENT_BG, fg=TEXT_WHITE).pack(anchor=W)
         Label(title_box, text="Your personal productivity cockpit and real-time performance overview.", font=('Segoe UI', 10), bg=CONTENT_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(4, 0))
 
-
-
         # Main scrollable area
         canvas = Canvas(self.content_area, bg=CONTENT_BG, highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.content_area, orient="vertical", command=canvas.yview)
@@ -11017,26 +11039,55 @@ class ProjectMonitorApp:
         def create_saas_card(parent, title, val, sub, color, icon, progress=None):
             card = Frame(parent, bg=CARD_BG, padx=22, pady=22, highlightbackground=BORDER_COLOR, highlightthickness=1)
             card.pack(side=LEFT, expand=True, fill=X, padx=(0, 20))
-            self._apply_hover_effect(card, color)
             
             top = Frame(card, bg=CARD_BG)
             top.pack(fill=X)
-            Label(top, text=icon, font=('Segoe UI', 14), bg=CARD_BG).pack(side=LEFT)
-            Label(top, text=title.upper(), font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(side=LEFT, padx=10)
             
-            Label(card, text=str(val), font=('Segoe UI', 32, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(16, 4))
+            icon_lbl = Label(top, text=icon, font=('Segoe UI', 14, 'bold'), bg=CARD_BG, fg=color)
+            icon_lbl.pack(side=LEFT)
             
+            title_lbl = Label(top, text=title.upper(), font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT)
+            title_lbl.pack(side=LEFT, padx=10)
+            
+            val_lbl = Label(card, text=str(val), font=('Segoe UI', 32, 'bold'), bg=CARD_BG, fg=TEXT_WHITE)
+            val_lbl.pack(anchor=W, pady=(16, 4))
+            
+            p_wrap = None
+            p_fill = None
             if progress is not None:
                 p_wrap = Frame(card, bg="#1e293b", height=4)
                 p_wrap.pack(fill=X, pady=(5, 10))
                 p_fill = Frame(p_wrap, bg=color, height=4)
                 p_fill.place(x=0, y=0, relwidth=progress/100)
                 
-            Label(card, text=sub, font=('Segoe UI', 9), bg=CARD_BG, fg=color).pack(anchor=W)
+            sub_lbl = Label(card, text=sub, font=('Segoe UI', 9), bg=CARD_BG, fg=color)
+            sub_lbl.pack(anchor=W)
             
             # Interactive hover
-            card.bind("<Enter>", lambda e: card.config(highlightbackground=color, bg="#252d4d"))
-            card.bind("<Leave>", lambda e: card.config(highlightbackground=BORDER_COLOR, bg=CARD_BG))
+            def on_enter(e):
+                card.config(highlightbackground=color, bg="#1e2540")
+                top.config(bg="#1e2540")
+                icon_lbl.config(bg="#1e2540")
+                title_lbl.config(bg="#1e2540")
+                val_lbl.config(bg="#1e2540")
+                sub_lbl.config(bg="#1e2540")
+                if p_wrap: p_wrap.config(bg="#0f172a")
+                
+            def on_leave(e):
+                card.config(highlightbackground=BORDER_COLOR, bg=CARD_BG)
+                top.config(bg=CARD_BG)
+                icon_lbl.config(bg=CARD_BG)
+                title_lbl.config(bg=CARD_BG)
+                val_lbl.config(bg=CARD_BG)
+                sub_lbl.config(bg=CARD_BG)
+                if p_wrap: p_wrap.config(bg="#1e293b")
+                
+            card.bind("<Enter>", on_enter)
+            card.bind("<Leave>", on_leave)
+            icon_lbl.bind("<Enter>", on_enter)
+            title_lbl.bind("<Enter>", on_enter)
+            val_lbl.bind("<Enter>", on_enter)
+            sub_lbl.bind("<Enter>", on_enter)
 
         # Fetch Data
         try:
@@ -11048,9 +11099,9 @@ class ProjectMonitorApp:
             pending = total - done
             perf = int((done/total)*100) if total > 0 else 100
             
-            create_saas_card(metrics_row, "Pending Tasks", pending, "Active assignments", ACCENT_BLUE, "⚡")
-            create_saas_card(metrics_row, "Success Rate", f"{perf}%", "Completion throughput", ACCENT_GREEN, "🏆", progress=perf)
-            create_saas_card(metrics_row, "Focus Level", "OPTIMAL", "Workload balance", ACCENT_ORANGE, "📊")
+            create_saas_card(metrics_row, "Pending Tasks", pending, "Active assignments", ACCENT_BLUE, "✦")
+            create_saas_card(metrics_row, "Success Rate", f"{perf}%", "Completion throughput", ACCENT_GREEN, "★", progress=perf)
+            create_saas_card(metrics_row, "Focus Level", "OPTIMAL", "Workload balance", ACCENT_ORANGE, "◆")
             
             # Dashboard Grid
             grid = Frame(scrollable_frame, bg=CONTENT_BG)
@@ -11060,7 +11111,7 @@ class ProjectMonitorApp:
             
             # Task Pulse Card
             t_card = Frame(grid, bg=CARD_BG, padx=30, pady=30, highlightbackground=BORDER_COLOR, highlightthickness=1)
-            t_card.grid(row=0, column=0, columnspan=2, sticky="nsew")
+            t_card.grid(row=0, column=0, sticky="nsew", padx=(0, 12), pady=(0, 12))
             
             Label(t_card, text="TASK PULSE", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W)
             Label(t_card, text="Immediate priorities requiring your attention.", font=('Segoe UI', 9), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(4, 25))
@@ -11092,17 +11143,45 @@ class ProjectMonitorApp:
                     
                     btn = Button(row_f, text="UPDATE", bg="#2e3760", fg=TEXT_WHITE, font=('Segoe UI', 7, 'bold'), relief=FLAT, padx=12, pady=6)
                     btn.pack(side=RIGHT)
-                    
-
+            
+            # Employee Profile & Quick Actions Card
+            p_card = Frame(grid, bg=CARD_BG, padx=30, pady=30, highlightbackground=BORDER_COLOR, highlightthickness=1)
+            p_card.grid(row=0, column=1, sticky="nsew", padx=(12, 0), pady=(0, 12))
+            
+            # Avatar circle
+            avatar_lbl = Label(p_card, text=CURRENT_USER_NAME[:2].upper(), font=('Segoe UI', 16, 'bold'), bg=ACCENT_BLUE, fg=WHITE, width=4, height=2)
+            avatar_lbl.pack(anchor=W)
+            
+            p_info = Frame(p_card, bg=CARD_BG)
+            p_info.pack(fill=X, pady=(15, 20))
+            Label(p_info, text=CURRENT_USER_NAME.upper(), font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W)
+            Label(p_info, text="TEAM MEMBER", font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=ACCENT_BLUE).pack(anchor=W, pady=(2, 0))
+            
+            Label(p_card, text="MONTHLY PROGRESS", font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W)
+            tp_wrap = Frame(p_card, bg="#1e293b", height=6)
+            tp_wrap.pack(fill=X, pady=(6, 15))
+            tp_fill = Frame(tp_wrap, bg=ACCENT_BLUE, height=6)
+            tp_fill.place(x=0, y=0, relwidth=0.75)
+            
+            Label(p_card, text="QUICK ACTIONS", font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(10, 8))
+            
+            def create_quick_btn(parent, text, cmd):
+                b = Button(parent, text=text, bg="#1e2540", fg=TEXT_WHITE, font=('Segoe UI', 8, 'bold'), relief=FLAT, padx=15, pady=8, command=cmd)
+                b.pack(fill=X, pady=4)
+                b.bind("<Enter>", lambda e: b.config(bg=ACCENT_BLUE))
+                b.bind("<Leave>", lambda e: b.config(bg="#1e2540"))
+                
+            create_quick_btn(p_card, "📝  LOG TIME & ATTENDANCE", self.log_time_window)
+            create_quick_btn(p_card, "✈  REQUEST LEAVE", self.request_leave_window)
+            create_quick_btn(p_card, "❓  RAISE NEW QUERY", self.raise_new_query_window)
                 
             # Recent Activity Card
             a_card = Frame(grid, bg=CARD_BG, padx=30, pady=30, highlightbackground=BORDER_COLOR, highlightthickness=1)
-            a_card.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(25, 0))
+            a_card.grid(row=1, column=0, sticky="nsew", padx=(0, 12), pady=(12, 0))
             
             Label(a_card, text="RECENT ACTIVITY", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W)
             Label(a_card, text="Your latest actions and updates.", font=('Segoe UI', 9), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(4, 25))
             
-            # Fetch recent timesheet entries
             cur.execute("""
                 SELECT date, hours, description 
                 FROM timesheets 
@@ -11128,10 +11207,47 @@ class ProjectMonitorApp:
                     
                     Label(act_f, text=date, font=('Segoe UI', 9), bg=CARD_BG, fg=MUTED_TEXT).pack(side=RIGHT)
                     
+            # Work-Life & Attendance Card
+            w_card = Frame(grid, bg=CARD_BG, padx=30, pady=30, highlightbackground=BORDER_COLOR, highlightthickness=1)
+            w_card.grid(row=1, column=1, sticky="nsew", padx=(12, 0), pady=(12, 0))
+            
+            dt_today = datetime.now().strftime("%Y-%m-%d")
+            cur.execute("SELECT clock_in, status FROM attendance WHERE name=? AND date=?", (CURRENT_USER_NAME, dt_today))
+            att_row = cur.fetchone()
+            
+            Label(w_card, text="TODAY'S STATUS", font=('Segoe UI', 10, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W)
+            
+            status_badge = Frame(w_card, padx=12, pady=8, highlightthickness=0)
+            status_badge.pack(anchor=W, pady=12)
+            
+            if att_row:
+                c_in, c_stat = att_row[0], att_row[1]
+                status_badge.config(bg="#1c3d2e")
+                Label(status_badge, text=f"✓  CLOCKED IN AT {c_in}", font=('Segoe UI', 8, 'bold'), bg="#1c3d2e", fg=ACCENT_GREEN).pack()
+            else:
+                status_badge.config(bg="#3a251c")
+                Label(status_badge, text="⚠  NOT CLOCKED IN YET", font=('Segoe UI', 8, 'bold'), bg="#3a251c", fg=ACCENT_ORANGE).pack()
+                
+            Label(w_card, text="LEAVE BALANCE OVERVIEW", font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(15, 8))
+            
+            cur.execute("SELECT COUNT(*) FROM leave_requests WHERE member_name=? AND status='Approved'", (CURRENT_USER_NAME,))
+            approved_leaves = cur.fetchone()[0] or 0
+            vacation_left = max(0, 15 - approved_leaves)
+            sick_left = 8
+            
+            def create_leave_row(parent, label, count, color):
+                row = Frame(parent, bg=CARD_BG)
+                row.pack(fill=X, pady=4)
+                Label(row, text=label, font=('Segoe UI', 9), bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
+                Label(row, text=f"{count} Days Left", font=('Segoe UI', 9, 'bold'), bg=CARD_BG, fg=color).pack(side=RIGHT)
+                
+            create_leave_row(w_card, "Vacation Days", vacation_left, ACCENT_BLUE)
+            create_leave_row(w_card, "Sick Leaves", sick_left, ACCENT_GREEN)
+            create_leave_row(w_card, "Personal Leaves", 5, ACCENT_ORANGE)
+            
             con.close()
         except Exception as e:
             debug_log(f"Emp Dashboard Error: {e}")
-
 
 
 
@@ -11527,13 +11643,6 @@ class ProjectMonitorApp:
         strip = Frame(self.content_area, bg=CONTENT_BG)
         strip.pack(fill=X, padx=px, pady=(0, 20))
         
-        self.query_search_var = StringVar()
-        ent_f = Frame(strip, bg=CARD_BG, padx=15, pady=8, highlightbackground=BORDER_COLOR, highlightthickness=1)
-        ent_f.pack(side=LEFT)
-        Label(ent_f, text="🔍", bg=CARD_BG, font=('Segoe UI', 10)).pack(side=LEFT)
-        Entry(ent_f, textvariable=self.query_search_var, bg=CARD_BG, fg=WHITE, borderwidth=0, font=('Segoe UI', 10), width=35, insertbackground=WHITE).pack(side=LEFT, padx=10)
-        self.query_search_var.trace_add("write", lambda *a: self.refresh_emp_queries())
-        
         Button(strip, text="+ RAISE NEW QUERY", bg=ACCENT_BLUE, fg=WHITE, font=('Segoe UI', 9, 'bold'), relief=FLAT, padx=20, pady=10, command=self.raise_new_query_window).pack(side=RIGHT)
 
         # Scrollable area
@@ -11556,9 +11665,9 @@ class ProjectMonitorApp:
         self.refresh_emp_queries()
 
     def refresh_emp_queries(self):
-        if not hasattr(self, 'query_container'): return
+        if not hasattr(self, 'query_container') or not self.query_container.winfo_exists(): return
         for widget in self.query_container.winfo_children(): widget.destroy()
-        search = self.query_search_var.get().lower()
+        search = ""
         
         try:
             con = sqlite3.connect(get_db_path())
@@ -11655,7 +11764,7 @@ class ProjectMonitorApp:
         self.refresh_emp_attendance()
 
     def refresh_emp_attendance(self):
-        if not hasattr(self, 'att_container'): return
+        if not hasattr(self, 'att_container') or not self.att_container.winfo_exists(): return
         for widget in self.att_container.winfo_children(): widget.destroy()
         
         try:
@@ -11715,7 +11824,7 @@ class ProjectMonitorApp:
             cols = [r[1] for r in cur.fetchall()]
             name_col = "employee_name" if "employee_name" in cols else "name"
             cur.execute(f"INSERT INTO attendance ({name_col}, date, clock_in, status) VALUES (?, ?, ?, ?)", (CURRENT_USER_NAME, today, now, 'Present'))
-            con.commit(); self.refresh_current_panel(); con.close()
+            con.commit(); con.close()
             self.refresh_emp_attendance()
         except Exception as e:
             messagebox.showerror("Error", f"Clock-in failed: {e}")
@@ -11730,7 +11839,7 @@ class ProjectMonitorApp:
             cols = [r[1] for r in cur.fetchall()]
             name_col = "employee_name" if "employee_name" in cols else "name"
             cur.execute(f"UPDATE attendance SET clock_out=? WHERE {name_col}=? AND date=?", (now, CURRENT_USER_NAME, today))
-            con.commit(); self.refresh_current_panel(); con.close()
+            con.commit(); con.close()
             self.refresh_emp_attendance()
         except Exception as e:
             messagebox.showerror("Error", f"Clock-out failed: {e}")
@@ -11911,7 +12020,7 @@ class ProjectMonitorApp:
                 cur = con.cursor()
                 cur.execute("INSERT INTO queries (user_name, subject, message, status) VALUES (?,?,?,?)",
                             (CURRENT_USER_NAME, subj, desc, 'Open'))
-                con.commit(); self.refresh_current_panel()
+                con.commit()
                 con.close()
                 messagebox.showinfo("Success", "Query raised successfully")
                 w.destroy()
@@ -11985,7 +12094,7 @@ class ProjectMonitorApp:
                 cur = con.cursor()
                 cur.execute("INSERT INTO leave_requests (member_name, leave_type, start_date, end_date, reason, status) VALUES (?,?,?,?,?,?)",
                             (CURRENT_USER_NAME, l_type, start, end, reason, 'Pending'))
-                con.commit(); self.refresh_current_panel()
+                con.commit()
                 con.close()
                 messagebox.showinfo("Success", "Leave request submitted")
                 w.destroy()
@@ -12069,7 +12178,7 @@ class ProjectMonitorApp:
                             (CURRENT_USER_NAME, dt, t_id, hrs, note, ts))
                 cur.execute("INSERT OR REPLACE INTO attendance (name, date, status, clock_in) VALUES (?,?,?,?)",
                             (CURRENT_USER_NAME, dt, 'Present', tm))
-                con.commit(); self.refresh_current_panel()
+                con.commit()
                 con.close()
                 messagebox.showinfo("Success", "Work logged and attendance marked.")
                 w.destroy()
