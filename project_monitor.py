@@ -6804,11 +6804,26 @@ class ProjectMonitorApp:
 
             t = Toplevel(self.root)
             t.title(f"Project Details: {pname}")
-            t.geometry("900x755")
-            t.minsize(765, 620)
+            t.geometry("1120x760")
+            t.minsize(960, 650)
             t.resizable(True, True)
             t.config(bg=CONTENT_BG)
             self._project_detail_windows[pid] = t
+            t.transient(self.root)
+
+            try:
+                self.root.update_idletasks()
+                root_x = self.root.winfo_x()
+                root_y = self.root.winfo_y()
+                root_w = self.root.winfo_width()
+                root_h = self.root.winfo_height()
+                width = 1120
+                height = 760
+                pos_x = root_x + max((root_w - width) // 2, 20)
+                pos_y = root_y + max((root_h - height) // 2, 20)
+                t.geometry(f"{width}x{height}+{pos_x}+{pos_y}")
+            except Exception:
+                pass
 
             def _on_close_project_modal():
                 self._project_detail_windows.pop(pid, None)
@@ -6829,14 +6844,14 @@ class ProjectMonitorApp:
             con.close()
             
             # --- Project Overview Summary Bar (Glassmorphic & Premium) ---
-            summary_bar = Frame(t, bg=CARD_BG, padx=20, pady=15, highlightbackground=BORDER_COLOR, highlightthickness=1)
-            summary_bar.pack(fill=X, padx=20, pady=(20, 0))
+            summary_bar = Frame(t, bg=CARD_BG, padx=18, pady=14, highlightbackground=BORDER_COLOR, highlightthickness=1)
+            summary_bar.pack(fill=X, padx=18, pady=(18, 0))
             
             # Left: Project Title & Team Info
             left_info = Frame(summary_bar, bg=CARD_BG)
             left_info.pack(side=LEFT, fill=Y)
             
-            Label(left_info, text=pname, font=('Segoe UI', 16, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W)
+            Label(left_info, text=pname, font=('Segoe UI', 17, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W)
             
             # Local label references for dynamic real-time updates
             modal_team_label = Label(left_info, text="👥 Team: Fetching...", font=('Segoe UI', 9), bg=CARD_BG, fg="#9aa3c2")
@@ -6858,7 +6873,7 @@ class ProjectMonitorApp:
             modal_prog_pct_lbl.pack(side=RIGHT)
             
             # Custom Progress Track
-            track = Frame(prog_frame, bg="#1e2540", height=8, width=180)
+            track = Frame(prog_frame, bg="#1e2540", height=8, width=160)
             track.pack(fill=X, pady=(4, 0))
             track.pack_propagate(False)
             
@@ -6872,25 +6887,37 @@ class ProjectMonitorApp:
             
             # Tabs for Tasks and Activity
             tab_control = ttk.Notebook(t)
-            tab_control.pack(fill=BOTH, expand=True, padx=20, pady=20)
+            tab_control.pack(fill=BOTH, expand=True, padx=18, pady=18)
             
-            # 1. Tasks Tab
+            # 1. Advanced AI Analysis Tab (Default)
+            ai_analysis_frame = Frame(tab_control, bg=CARD_BG)
+            tab_control.add(ai_analysis_frame, text=" 🔮 Advanced AI Analysis ")
+            
+            # 2. Tasks Tab
             task_frame = Frame(tab_control, bg=CARD_BG)
             tab_control.add(task_frame, text=" Tasks ")
             
             # Header row with Auto Plan, Project Assignee and Assign Selected
             header = Frame(task_frame, bg=CARD_BG)
-            header.pack(fill=X, padx=10, pady=(10, 0))
-            Label(header, text="Tasks", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
+            header.pack(fill=X, padx=14, pady=(14, 0))
+            Label(header, text="Tasks", font=('Segoe UI', 13, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
             if CURRENT_USER_ROLE.lower() in ('team leader', 'project manager', 'manager'):
+                controls_wrap = Frame(header, bg=CARD_BG)
+                controls_wrap.pack(side=RIGHT)
+
+                selection_box = Frame(controls_wrap, bg="#242c4a", padx=10, pady=8, highlightbackground=BORDER_COLOR, highlightthickness=1)
+                selection_box.pack(side=RIGHT, padx=(10, 0))
+
+                project_box = Frame(controls_wrap, bg="#242c4a", padx=10, pady=8, highlightbackground=BORDER_COLOR, highlightthickness=1)
+                project_box.pack(side=RIGHT)
+
                 def open_auto_plan():
                     self.auto_plan_modal(pid, pname, refresh_cb=lambda: refresh_tree())
-                Button(header, text="Auto Plan", bg=ACCENT_BLUE, fg=WHITE, relief=FLAT, font=('Segoe UI', 10, 'bold'),
-                       command=open_auto_plan).pack(side=RIGHT, padx=(5, 0))
                 
-                assign_box = Frame(header, bg=CARD_BG)
-                assign_box.pack(side=RIGHT, padx=10)
-                Label(assign_box, text="Assign selected to:", bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
+                Label(selection_box, text="Selected tasks", bg="#242c4a", fg=MUTED_TEXT, font=('Segoe UI', 8, 'bold')).pack(anchor=W)
+                assign_row = Frame(selection_box, bg="#242c4a")
+                assign_row.pack(anchor=E, pady=(4, 0))
+                Label(assign_row, text="Assign to:", bg="#242c4a", fg=TEXT_WHITE).pack(side=LEFT)
                 try:
                     con_emp = sqlite3.connect(get_db_path())
                     cur_emp = con_emp.cursor()
@@ -6903,7 +6930,7 @@ class ProjectMonitorApp:
                 except:
                     emp_list = []
                 sel_user = StringVar()
-                ttk.Combobox(assign_box, textvariable=sel_user, values=emp_list, state="readonly", width=20).pack(side=LEFT, padx=6)
+                ttk.Combobox(assign_row, textvariable=sel_user, values=emp_list, state="readonly", width=18).pack(side=LEFT, padx=6)
                 def assign_selected():
                     items = tree.selection()
                     if not items or not sel_user.get():
@@ -6918,15 +6945,17 @@ class ProjectMonitorApp:
                         refresh_tree()
                     except Exception as e:
                         messagebox.showerror("Error", str(e))
-                Button(assign_box, text="Assign", bg=PRIMARY_BG, fg=WHITE, relief=FLAT, font=('Segoe UI', 10, 'bold'),
+                Button(assign_row, text="Assign", bg=PRIMARY_BG, fg=WHITE, relief=FLAT, font=('Segoe UI', 10, 'bold'),
                        command=assign_selected).pack(side=LEFT)
 
                 # Project-level assignee controls
-                proj_box = Frame(header, bg=CARD_BG)
-                proj_box.pack(side=RIGHT, padx=10)
-                Label(proj_box, text="Project assignee:", bg=CARD_BG, fg=TEXT_WHITE).pack(side=LEFT)
+                Label(project_box, text="Project defaults", bg="#242c4a", fg=MUTED_TEXT, font=('Segoe UI', 8, 'bold')).pack(anchor=W)
+                proj_row = Frame(project_box, bg="#242c4a")
+                proj_row.pack(anchor=E, pady=(4, 0))
+                Label(proj_row, text="Assignee:", bg="#242c4a", fg=TEXT_WHITE).pack(side=LEFT)
                 proj_user = StringVar(value=get_project_default_assignee(pid))
-                ttk.Combobox(proj_box, textvariable=proj_user, values=emp_list, state="readonly", width=18).pack(side=LEFT, padx=6)
+                ttk.Combobox(proj_row, textvariable=proj_user, values=emp_list, state="readonly", width=16).pack(side=LEFT, padx=6)
+                
                 def set_proj_default():
                     if not proj_user.get():
                         messagebox.showwarning("Warning", "Pick a user to set as default.")
@@ -6935,6 +6964,7 @@ class ProjectMonitorApp:
                         messagebox.showinfo("Saved", f"Default assignee set to {proj_user.get()}")
                     else:
                         messagebox.showerror("Error", "Failed to save default assignee")
+
                 def assign_all_now():
                     if not proj_user.get():
                         messagebox.showwarning("Warning", "Pick a user.")
@@ -6943,38 +6973,344 @@ class ProjectMonitorApp:
                         con3 = sqlite3.connect(get_db_path())
                         cur3 = con3.cursor()
                         cur3.execute("UPDATE tasks SET assigned_to=? WHERE project_id=?", (proj_user.get(), pid))
-                        con3.commit(); self.refresh_current_panel(); con3.close()
+                        con3.commit()
+                        self.refresh_current_panel()
+                        con3.close()
                         refresh_tree()
-                        messagebox.showinfo("Updated", "All project tasks assigned.")
+                        messagebox.showinfo("Updated", "All project tasks assigned to this user.")
                     except Exception as e:
                         messagebox.showerror("Error", str(e))
-                Button(proj_box, text="Set Default", bg=ACCENT_ORANGE, fg=WHITE, relief=FLAT, font=('Segoe UI', 9, 'bold'),
+
+                Button(proj_row, text="Set Default", bg=ACCENT_ORANGE, fg=WHITE, relief=FLAT, font=('Segoe UI', 9, 'bold'),
                        command=set_proj_default).pack(side=LEFT, padx=(0,6))
-                Button(proj_box, text="Assign All", bg=ACCENT_GREEN, fg=WHITE, relief=FLAT, font=('Segoe UI', 9, 'bold'),
+                Button(proj_row, text="Assign All", bg=ACCENT_GREEN, fg=WHITE, relief=FLAT, font=('Segoe UI', 9, 'bold'),
                        command=assign_all_now).pack(side=LEFT)
+                Button(proj_row, text="Auto Plan", bg=ACCENT_BLUE, fg=WHITE, relief=FLAT, font=('Segoe UI', 9, 'bold'),
+                       command=open_auto_plan).pack(side=LEFT, padx=(6, 0))
             
-            # 2. Activity Timeline Tab
+            # 3. Activity Timeline Tab
             activity_frame = Frame(tab_control, bg=CARD_BG)
             tab_control.add(activity_frame, text=" Activity Timeline ")
             
             # --- Tasks Tab Content ---
             tree_frame = Frame(task_frame, bg=CARD_BG)
-            tree_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
-            
+            tree_frame.pack(fill=BOTH, expand=True, padx=14, pady=14)
+
+            style = ttk.Style()
+            style.configure("ProjectDetails.Treeview",
+                            background=HEADER_BG,
+                            foreground=TEXT_WHITE,
+                            fieldbackground=HEADER_BG,
+                            rowheight=34,
+                            borderwidth=0,
+                            relief="flat",
+                            font=('Segoe UI', 10))
+            style.configure("ProjectDetails.Treeview.Heading",
+                            background="#1f2937",
+                            foreground=TEXT_WHITE,
+                            font=('Segoe UI', 10, 'bold'),
+                            borderwidth=0,
+                            relief="flat",
+                            padding=(10, 8))
+            style.map("ProjectDetails.Treeview",
+                      background=[('selected', PRIMARY_BG)],
+                      foreground=[('selected', WHITE)])
+
             cols = ("ID", "Title", "Assigned To", "Status", "Due Date", "Priority")
-            tree = ttk.Treeview(tree_frame, columns=cols, show='headings', selectmode="extended")
+            tree = ttk.Treeview(tree_frame, columns=cols, show='headings', selectmode="extended", style="ProjectDetails.Treeview")
             for col in cols:
                 tree.heading(col, text=col)
                 if col == "Title":
-                    tree.column(col, width=320, anchor=W)
+                    tree.column(col, width=300, anchor=W)
+                elif col == "Assigned To":
+                    tree.column(col, width=170, anchor=W)
+                elif col == "Status":
+                    tree.column(col, width=130, anchor=CENTER)
+                elif col == "Due Date":
+                    tree.column(col, width=135, anchor=CENTER)
+                elif col == "Priority":
+                    tree.column(col, width=110, anchor=CENTER)
                 elif col == "ID":
                     tree.column(col, width=50, anchor=CENTER)
             tree.pack(side=LEFT, fill=BOTH, expand=True)
-            
+
             scrolly = Scrollbar(tree_frame, orient=VERTICAL, command=tree.yview)
             scrolly.pack(side=RIGHT, fill=Y)
             tree.configure(yscrollcommand=scrolly.set)
-            
+
+            def refresh_ai_analysis():
+                for widget in ai_analysis_frame.winfo_children():
+                    widget.destroy()
+
+                con = sqlite3.connect(get_db_path())
+                try:
+                    cur = con.cursor()
+                    cur.execute("SELECT start_date, end_date, priority, team_leader FROM projects WHERE id=?", (pid,))
+                    p_row = cur.fetchone()
+                    p_prio = p_row[2] if p_row and p_row[2] else "Medium"
+                    p_tl = p_row[3] if p_row and p_row[3] else "Unassigned"
+                    p_start = p_row[0] if p_row and p_row[0] else ""
+                    p_end = p_row[1] if p_row and p_row[1] else ""
+
+                    cur.execute("""
+                        SELECT id, title, 
+                               COALESCE(NULLIF(TRIM(assigned_to), ''), 'Unassigned'),
+                               status, priority, due_date 
+                        FROM tasks 
+                        WHERE project_id=?
+                    """, (pid,))
+                    project_tasks = cur.fetchall()
+                finally:
+                    con.close()
+
+                total_tasks = len(project_tasks)
+                completed_tasks = sum(1 for t in project_tasks if t[3] == 'Completed')
+                delayed_tasks = sum(1 for t in project_tasks if t[3] == 'Delayed')
+                pending_tasks = sum(1 for t in project_tasks if t[3] == 'Pending')
+                inprogress_tasks = sum(1 for t in project_tasks if t[3] == 'In Progress')
+
+                est_days = 30
+                if p_start and p_end:
+                    try:
+                        d1 = datetime.strptime(p_start.split()[0], "%Y-%m-%d")
+                        d2 = datetime.strptime(p_end.split()[0], "%Y-%m-%d")
+                        est_days = max(1, (d2 - d1).days)
+                    except:
+                        pass
+
+                prio_map = {'Low': 1, 'Medium': 2, 'High': 3}
+                prio_num = prio_map.get(p_prio, 2)
+
+                complexity = 2
+                if total_tasks > 5:
+                    complexity = 3
+                if total_tasks > 10:
+                    complexity = 4
+                if any(t[4] == 'High' for t in project_tasks):
+                    complexity = min(5, complexity + 1)
+
+                resource_availability = 0.8
+                if total_tasks > 0:
+                    resource_availability = round(max(0.2, min(1.0, 1.0 - (delayed_tasks / total_tasks))), 2)
+
+                workload = pending_tasks + inprogress_tasks + delayed_tasks
+                avg_exp = 5.8
+
+                risk_pct = 0.0
+                is_delayed_pred = 0
+                model_loaded = False
+
+                model = get_ml_model()
+                if model:
+                    try:
+                        import pandas as pd
+                        feats_df = pd.DataFrame([[
+                            float(prio_num), 
+                            float(est_days), 
+                            float(complexity), 
+                            float(resource_availability), 
+                            float(avg_exp), 
+                            float(workload)
+                        ]], columns=['priority', 'estimated_days', 'complexity', 'resource_availability', 'team_experience', 'workload'])
+                        proba = model.predict_proba(feats_df)
+                        risk_pct = float(proba[0][1]) * 100
+                        is_delayed_pred = int(model.predict(feats_df)[0])
+                        model_loaded = True
+                    except Exception as e:
+                        debug_log(f"DEBUG: Error predicting with ML model: {e}")
+
+                if not model_loaded or risk_pct == 0.0:
+                    base_risk = 15.0
+                    base_risk += (prio_num - 1) * 15
+                    base_risk += min(25, workload * 3)
+                    base_risk += (complexity - 2) * 8
+                    base_risk -= (resource_availability - 0.5) * 20
+                    base_risk -= (avg_exp - 5) * 2
+                    if total_tasks > 0:
+                        base_risk += (delayed_tasks / total_tasks) * 45
+                    risk_pct = max(5.0, min(95.0, base_risk))
+
+                if risk_pct >= 65:
+                    risk_level_str = "HIGH RISK"
+                    risk_color = ACCENT_RED
+                elif risk_pct >= 30:
+                    risk_level_str = "MEDIUM RISK"
+                    risk_color = ACCENT_ORANGE
+                else:
+                    risk_level_str = "LOW RISK"
+                    risk_color = ACCENT_GREEN
+
+                main_split = Frame(ai_analysis_frame, bg=CARD_BG)
+                main_split.pack(fill=BOTH, expand=True, padx=14, pady=14)
+
+                left_col = Frame(main_split, bg=CARD_BG, width=420)
+                left_col.pack(side=LEFT, fill=BOTH, expand=False, padx=(0, 10))
+                left_col.pack_propagate(False)
+
+                Label(left_col, text="🤖 Advanced Predictive AI Model", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 12))
+
+                risk_card = Frame(left_col, bg="#1e2540", highlightbackground=BORDER_COLOR, highlightthickness=1, padx=20, pady=20)
+                risk_card.pack(fill=X, pady=(0, 15))
+
+                Label(risk_card, text="PROJECT DELAY RISK PROBABILITY", font=('Segoe UI', 8, 'bold'), bg="#1e2540", fg=MUTED_TEXT).pack(anchor=W)
+
+                prob_lbl = Label(risk_card, text=f"{risk_pct:.1f}%", font=('Segoe UI', 36, 'bold'), bg="#1e2540", fg=risk_color)
+                prob_lbl.pack(anchor=W, pady=4)
+
+                risk_badge = Frame(risk_card, bg="#161b30", highlightbackground=risk_color, highlightthickness=1, padx=10, pady=4)
+                risk_badge.pack(anchor=W, pady=(4, 0))
+                Label(risk_badge, text=risk_level_str, font=('Segoe UI', 8, 'bold'), bg="#161b30", fg=risk_color).pack()
+
+                prob_track = Frame(risk_card, bg="#111625", height=10)
+                prob_track.pack(fill=X, pady=(15, 0))
+                prob_fill = Frame(prob_track, bg=risk_color, height=10)
+                prob_fill.place(x=0, y=0, relwidth=min(risk_pct/100, 1.0))
+
+                params_card = Frame(left_col, bg=CARD_BG, highlightbackground=BORDER_COLOR, highlightthickness=1, padx=15, pady=15)
+                params_card.pack(fill=BOTH, expand=True)
+
+                Label(params_card, text="Predictive Model Input Metrics", font=('Segoe UI', 10, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 10))
+
+                def render_param(parent, name, val_str, pct_val, desc):
+                    row = Frame(parent, bg=CARD_BG)
+                    row.pack(fill=X, pady=5)
+                    
+                    lbl_row = Frame(row, bg=CARD_BG)
+                    lbl_row.pack(fill=X)
+                    Label(lbl_row, text=name, font=('Segoe UI', 9), bg=CARD_BG, fg="#9aa3c2").pack(side=LEFT)
+                    Label(lbl_row, text=val_str, font=('Segoe UI', 9, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(side=RIGHT)
+                    
+                    p_track = Frame(row, bg="#1e2540", height=4)
+                    p_track.pack(fill=X, pady=(4, 2))
+                    p_fill = Frame(p_track, bg=ACCENT_BLUE, height=4)
+                    p_fill.place(x=0, y=0, relwidth=min(pct_val, 1.0))
+
+                render_param(params_card, "Complexity Factor", f"{complexity}/5", complexity/5, "Based on task volume & high priority items")
+                render_param(params_card, "Resource Workload", f"{workload} active tasks", min(1.0, workload/15), "Total remaining tasks assigned to team")
+                render_param(params_card, "Resource Availability", f"{int(resource_availability*100)}%", resource_availability, "Friction-adjusted available capacity")
+                render_param(params_card, "Est. Duration", f"{est_days} days", min(1.0, est_days/90), "Expected timeline to project deadline")
+
+                reco_frame = Frame(params_card, bg="#11221b" if risk_level_str == "LOW RISK" else ("#2d201a" if risk_level_str == "MEDIUM RISK" else "#331616"), padx=10, pady=10)
+                reco_frame.pack(fill=X, side=BOTTOM, pady=(10, 0))
+
+                if risk_level_str == "LOW RISK":
+                    reco_text = "✨ AI Insight: Project delivery is healthy. Tasks are evenly distributed and timeline velocity is high. Keep tracking default velocity."
+                    reco_fg = ACCENT_GREEN
+                elif risk_level_str == "MEDIUM RISK":
+                    reco_text = "⚠️ AI Recommendation: Task backlog is rising. Team Leader should monitor pending tasks. Ensure delayed tasks get reallocated."
+                    reco_fg = ACCENT_ORANGE
+                else:
+                    reco_text = "🚨 AI Alert: High risk of delivery delay! Overdue tasks exist. Redistribute workload immediately to balance the employee stress level."
+                    reco_fg = ACCENT_RED
+
+                Label(reco_frame, text=reco_text, font=('Segoe UI', 8), bg=reco_frame.cget('bg'), fg=reco_fg, wraplength=350, justify=LEFT).pack(anchor=W)
+
+                right_col = Frame(main_split, bg=CARD_BG)
+                right_col.pack(side=LEFT, fill=BOTH, expand=True, padx=(10, 0))
+
+                Label(right_col, text="👥 Employee Workload & Completion Status", font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(0, 12))
+
+                emp_list_outer = Frame(right_col, bg=CARD_BG, highlightbackground=BORDER_COLOR, highlightthickness=1)
+                emp_list_outer.pack(fill=BOTH, expand=True)
+
+                emp_canvas = Canvas(emp_list_outer, bg=CARD_BG, highlightthickness=0)
+                emp_scrollbar = ttk.Scrollbar(emp_list_outer, orient="vertical", command=emp_canvas.yview)
+                emp_scroll_frame = Frame(emp_canvas, bg=CARD_BG)
+
+                emp_scroll_frame.bind("<Configure>", lambda e: emp_canvas.configure(scrollregion=emp_canvas.bbox("all")))
+                emp_canvas_win = emp_canvas.create_window((0, 0), window=emp_scroll_frame, anchor="nw")
+                emp_canvas.configure(yscrollcommand=emp_scrollbar.set)
+
+                def _on_emp_canvas_resize(e):
+                    emp_canvas.itemconfig(emp_canvas_win, width=e.width)
+                emp_canvas.bind("<Configure>", _on_emp_canvas_resize)
+
+                emp_canvas.pack(side=LEFT, fill=BOTH, expand=True)
+                emp_scrollbar.pack(side=RIGHT, fill=Y)
+
+                def _on_mousewheel(event):
+                    if emp_canvas.winfo_exists():
+                        emp_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+                emp_canvas.bind("<MouseWheel>", _on_mousewheel)
+                emp_scroll_frame.bind("<MouseWheel>", _on_mousewheel)
+
+                emp_tasks = {}
+                for tid, t_title, assigned, t_status, t_prio, t_due in project_tasks:
+                    if assigned not in emp_tasks:
+                        emp_tasks[assigned] = []
+                    emp_tasks[assigned].append((tid, t_title, t_status, t_prio, t_due))
+
+                if not emp_tasks or (len(emp_tasks) == 1 and "Unassigned" in emp_tasks and not emp_tasks["Unassigned"]):
+                    empty_lbl = Label(emp_scroll_frame, text="No tasks currently assigned to any employee.", font=('Segoe UI', 10), bg=CARD_BG, fg=MUTED_TEXT)
+                    empty_lbl.pack(pady=40)
+                else:
+                    sorted_emps = sorted([e for e in emp_tasks.keys() if e != "Unassigned"])
+                    if "Unassigned" in emp_tasks:
+                        sorted_emps.append("Unassigned")
+
+                    for emp_name in sorted_emps:
+                        t_list = emp_tasks[emp_name]
+                        emp_total = len(t_list)
+                        emp_done = sum(1 for t in t_list if t[2] == 'Completed')
+                        emp_delayed = sum(1 for t in t_list if t[2] == 'Delayed')
+                        emp_inprogress = sum(1 for t in t_list if t[2] == 'In Progress')
+                        emp_pending = sum(1 for t in t_list if t[2] == 'Pending')
+
+                        emp_comp_rate = int((emp_done / emp_total) * 100) if emp_total > 0 else 0
+
+                        if emp_name == "Unassigned":
+                            emp_status = "⚠️ NOT ASSIGNED"
+                            emp_status_color = ACCENT_ORANGE
+                            emp_card_bg = "#27221b"
+                        elif emp_delayed > 0:
+                            emp_status = "🚨 DELAYED / AT RISK"
+                            emp_status_color = ACCENT_RED
+                            emp_card_bg = "#2d1b1b"
+                        elif emp_inprogress > 0 or emp_pending > 0:
+                            emp_status = "⚡ ACTIVE"
+                            emp_status_color = ACCENT_BLUE
+                            emp_card_bg = "#1b233a"
+                        else:
+                            emp_status = "✅ COMPLETED"
+                            emp_status_color = ACCENT_GREEN
+                            emp_card_bg = "#1b2d21"
+
+                        emp_card = Frame(emp_scroll_frame, bg=emp_card_bg, highlightbackground=BORDER_COLOR, highlightthickness=1, padx=15, pady=12)
+                        emp_card.pack(fill=X, padx=10, pady=6)
+
+                        card_head = Frame(emp_card, bg=emp_card_bg)
+                        card_head.pack(fill=X)
+
+                        icon_prefix = "👤" if emp_name != "Unassigned" else "❓"
+                        Label(card_head, text=f"{icon_prefix} {emp_name}", font=('Segoe UI', 11, 'bold'), bg=emp_card_bg, fg=TEXT_WHITE).pack(side=LEFT)
+
+                        status_pill = Frame(card_head, bg="#111625", highlightbackground=emp_status_color, highlightthickness=1, padx=8, pady=2)
+                        status_pill.pack(side=RIGHT)
+                        Label(status_pill, text=emp_status, font=('Segoe UI', 7, 'bold'), bg="#111625", fg=emp_status_color).pack()
+
+                        prog_lbl_row = Frame(emp_card, bg=emp_card_bg)
+                        prog_lbl_row.pack(fill=X, pady=(8, 4))
+                        Label(prog_lbl_row, text=f"Task Completion: {emp_done} of {emp_total} tasks", font=('Segoe UI', 8), bg=emp_card_bg, fg="#9aa3c2").pack(side=LEFT)
+                        Label(prog_lbl_row, text=f"{emp_comp_rate}%", font=('Segoe UI', 8, 'bold'), bg=emp_card_bg, fg=emp_status_color).pack(side=RIGHT)
+
+                        emp_prog_track = Frame(emp_card, bg="#111625", height=6)
+                        emp_prog_track.pack(fill=X, pady=(0, 8))
+                        emp_prog_fill = Frame(emp_prog_track, bg=emp_status_color, height=6)
+                        emp_prog_fill.place(x=0, y=0, relwidth=min(emp_comp_rate/100, 1.0))
+
+                        tasks_sub = Frame(emp_card, bg=emp_card_bg)
+                        tasks_sub.pack(fill=X)
+
+                        for tid, t_title, t_status, t_prio, t_due in t_list:
+                            t_row = Frame(tasks_sub, bg=emp_card_bg)
+                            t_row.pack(fill=X, pady=1)
+                            
+                            t_status_icon = {"Completed": "✅", "Ongoing": "⚡", "In Progress": "⚡", "Delayed": "🚨", "Pending": "⏳"}.get(t_status, "📄")
+                            t_status_fg = {"Completed": ACCENT_GREEN, "Ongoing": ACCENT_BLUE, "In Progress": ACCENT_BLUE, "Delayed": ACCENT_RED, "Pending": MUTED_TEXT}.get(t_status, MUTED_TEXT)
+                            
+                            Label(t_row, text=f"  {t_status_icon}", font=('Segoe UI', 9), bg=emp_card_bg, fg=t_status_fg).pack(side=LEFT)
+                            Label(t_row, text=t_title, font=('Segoe UI', 9), bg=emp_card_bg, fg="#e5e7eb" if t_status == "Completed" else TEXT_WHITE).pack(side=LEFT, padx=5)
+
             def refresh_tree():
                 for i in tree.get_children(): tree.delete(i)
                 con = sqlite3.connect(get_db_path())
@@ -7019,14 +7355,21 @@ class ProjectMonitorApp:
                 modal_prog_fill.place_forget()
                 if prog > 0:
                     modal_prog_fill.place(x=0, y=0, relwidth=min(prog/100, 1.0))
-            refresh_tree()
                 
+                # Update AI Analysis
+                try:
+                    refresh_ai_analysis()
+                except Exception as e:
+                    debug_log(f"DEBUG: Error refreshing AI analysis: {e}")
+
+            refresh_tree()
+            
             # --- Activity Timeline Content ---
             timeline_frame = Frame(activity_frame, bg=CARD_BG)
-            timeline_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
+            timeline_frame.pack(fill=BOTH, expand=True, padx=14, pady=14)
             
             cols_act = ("Time", "User", "Action")
-            tree_act = ttk.Treeview(timeline_frame, columns=cols_act, show='headings')
+            tree_act = ttk.Treeview(timeline_frame, columns=cols_act, show='headings', style="ProjectDetails.Treeview")
             for col in cols_act: 
                 tree_act.heading(col, text=col)
                 tree_act.column(col, width=150)
@@ -7049,7 +7392,6 @@ class ProjectMonitorApp:
                     tree_act.insert("", END, values=row)
                 con_act.close()
             except Exception as e:
-                # Keep modal usable even if timeline fetch fails.
                 messagebox.showwarning("Activity Timeline", f"Could not load timeline data: {e}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open project details: {e}")
