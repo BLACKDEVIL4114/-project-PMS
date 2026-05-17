@@ -5154,7 +5154,9 @@ class ProjectMonitorApp:
                     except Exception as e:
                         messagebox.showerror("Error", str(e))
                 Button(f, text="Add", bg=ACCENT_GREEN, fg=WHITE, relief=FLAT, command=save).pack(pady=10, fill=X)
-            Button(t, text="Add Milestone", bg=ACCENT_BLUE, fg=WHITE, relief=FLAT, command=add_ms).pack(anchor=E, padx=20, pady=(0,10))
+            # Enforce read-only mode by showing Milestone creation controls only to Managers, Leaders, and Admins
+            if CURRENT_USER_ROLE.lower() in ('team leader', 'project manager', 'manager', 'admin'):
+                Button(t, text="Add Milestone", bg=ACCENT_BLUE, fg=WHITE, relief=FLAT, command=add_ms).pack(anchor=E, padx=20, pady=(0,10))
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
@@ -6484,7 +6486,7 @@ class ProjectMonitorApp:
         
         title_row = Frame(info, bg=_bg)
         title_row.pack(anchor=W)
-        Label(title_row, text=_icon, font=('Segoe UI', 12), bg=_bg).pack(side=LEFT, padx=(0, 10))
+        Label(title_row, text=_icon, font=('Segoe UI', 12), bg=_bg, fg=_s_color).pack(side=LEFT, padx=(0, 10))
         Label(title_row, text=name, font=('Segoe UI', 13, 'bold'), bg=_bg, fg=TEXT_WHITE).pack(side=LEFT)
         
         Label(info, text=f"👤 Lead: {leader or 'Unassigned'}", font=('Segoe UI', 9), bg=_bg, fg=MUTED_TEXT).pack(anchor=W, pady=(4, 0))
