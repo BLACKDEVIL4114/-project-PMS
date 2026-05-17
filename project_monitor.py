@@ -11670,7 +11670,7 @@ class ProjectMonitorApp:
         self.refresh_emp_attendance()
 
     def refresh_emp_attendance(self):
-        if not hasattr(self, 'att_container'): return
+        if not hasattr(self, 'att_container') or not self.att_container.winfo_exists(): return
         for widget in self.att_container.winfo_children(): widget.destroy()
         
         try:
@@ -11730,7 +11730,7 @@ class ProjectMonitorApp:
             cols = [r[1] for r in cur.fetchall()]
             name_col = "employee_name" if "employee_name" in cols else "name"
             cur.execute(f"INSERT INTO attendance ({name_col}, date, clock_in, status) VALUES (?, ?, ?, ?)", (CURRENT_USER_NAME, today, now, 'Present'))
-            con.commit(); self.refresh_current_panel(); con.close()
+            con.commit(); con.close()
             self.refresh_emp_attendance()
         except Exception as e:
             messagebox.showerror("Error", f"Clock-in failed: {e}")
@@ -11745,7 +11745,7 @@ class ProjectMonitorApp:
             cols = [r[1] for r in cur.fetchall()]
             name_col = "employee_name" if "employee_name" in cols else "name"
             cur.execute(f"UPDATE attendance SET clock_out=? WHERE {name_col}=? AND date=?", (now, CURRENT_USER_NAME, today))
-            con.commit(); self.refresh_current_panel(); con.close()
+            con.commit(); con.close()
             self.refresh_emp_attendance()
         except Exception as e:
             messagebox.showerror("Error", f"Clock-out failed: {e}")
