@@ -1041,7 +1041,8 @@ class ProjectMonitorApp:
                 # Windows uses delta/120, others might need different scaling
                 units = self._normalize_scroll_units(event.delta)
                 if units:
-                    canvas.yview_scroll(-units, "units")
+                    # Scroll by 3 units for a snappier, premium desktop feel
+                    canvas.yview_scroll(-units * 3, "units")
             except Exception:
                 pass
 
@@ -1054,7 +1055,7 @@ class ProjectMonitorApp:
                     return
                 units = self._normalize_scroll_units(event.delta)
                 if units:
-                    canvas.xview_scroll(-units, "units")
+                    canvas.xview_scroll(-units * 3, "units")
             except Exception:
                 pass
 
@@ -1089,7 +1090,19 @@ class ProjectMonitorApp:
 
         def _unbind_mousewheel(_event):
             try:
-                # Safely unbind from global scope
+                if not canvas.winfo_exists():
+                    return
+                # Robust pointer-based check to prevent unbinding when hovering over child elements
+                x, y = self.root.winfo_pointerxy()
+                target = self.root.winfo_containing(x, y)
+                curr = target
+                while curr:
+                    if curr == canvas or curr == wrapper:
+                        # Still inside the scrollable container hierarchy, do not unbind
+                        return
+                    curr = curr.master
+                
+                # Safely unbind from global scope only when cursor leaves the scrollable area
                 canvas.unbind_all("<MouseWheel>")
                 canvas.unbind_all("<Button-4>")
                 canvas.unbind_all("<Button-5>")
