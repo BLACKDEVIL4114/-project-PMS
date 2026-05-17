@@ -7517,7 +7517,7 @@ class ProjectMonitorApp:
         
         # Title & Project
         Label(inner, text=title, font=('Segoe UI', 13, 'bold'), bg=CARD_BG, fg=TEXT_WHITE, wraplength=280, justify=LEFT).pack(anchor=W, pady=(10, 2))
-        Label(inner, text=f"?? {p_name or 'Independent Task'}", font=('Segoe UI', 9), bg=CARD_BG, fg=ACCENT_BLUE).pack(anchor=W)
+        Label(inner, text=f"📂 {p_name or 'Independent Task'}", font=('Segoe UI Emoji', 9), bg=CARD_BG, fg=ACCENT_BLUE).pack(anchor=W)
         
         # Divider
         Frame(inner, bg=BORDER_COLOR, height=1).pack(fill=X, pady=15)
@@ -7550,7 +7550,7 @@ class ProjectMonitorApp:
             except: pass
             
         d_color = ACCENT_RED if overdue else TEXT_SECONDARY
-        Label(bot, text=f"?? {due_date}", font=('Segoe UI', 9), bg=CARD_BG, fg=d_color).pack(side=LEFT)
+        Label(bot, text=f"📅 {due_date}", font=('Segoe UI Emoji', 9), bg=CARD_BG, fg=d_color).pack(side=LEFT)
         
         btn = Button(bot, text="MANAGE \u2192", font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=ACCENT_BLUE,
                      relief=FLAT, bd=0, padx=0, pady=0, activebackground=CARD_BG, activeforeground=WHITE,
@@ -9692,13 +9692,13 @@ class ProjectMonitorApp:
         
         self._bind_canvas_scrolling(wrapper, canvas)
 
-        def create_intel_card(p, title, val, sub, color, icon="??"):
+        def create_intel_card(p, title, val, sub, color, icon="📊"):
             f = Frame(p, bg=CARD_BG, padx=25, pady=25, highlightbackground=BORDER_COLOR, highlightthickness=1)
             f.pack(side=LEFT, fill=BOTH, expand=True, padx=10)
             
             top = Frame(f, bg=CARD_BG)
             top.pack(fill=X)
-            Label(top, text=icon, font=('Segoe UI', 12), bg=CARD_BG).pack(side=LEFT)
+            Label(top, text=icon, font=('Segoe UI Emoji', 12), bg=CARD_BG).pack(side=LEFT)
             Label(top, text=title.upper(), font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(side=LEFT, padx=10)
             
             Label(f, text=str(val), font=('Segoe UI', 32, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W, pady=(15, 5))
@@ -9709,9 +9709,9 @@ class ProjectMonitorApp:
         # Row 1: KPI Grid
         r1 = Frame(grid, bg=CONTENT_BG)
         r1.pack(fill=X, pady=(0, 20))
-        create_intel_card(r1, "Efficiency", "94%", "+4.2% THIS WEEK", ACCENT_BLUE, "??")
-        create_intel_card(r1, "Focus Score", "8.8", "DEEP WORK OPTIMIZED", ACCENT_GREEN, "??")
-        create_intel_card(r1, "Reliability", "98%", "ZERO OVERDUE TASKS", ACCENT_PURPLE, "??")
+        create_intel_card(r1, "Efficiency", "94%", "+4.2% THIS WEEK", ACCENT_BLUE, "📈")
+        create_intel_card(r1, "Focus Score", "8.8", "DEEP WORK OPTIMIZED", ACCENT_GREEN, "🎯")
+        create_intel_card(r1, "Reliability", "98%", "ZERO OVERDUE TASKS", ACCENT_PURPLE, "🛡️")
 
         # Row 2: Behavioral Analysis & Risk
         r2 = Frame(grid, bg=CONTENT_BG)
@@ -10576,7 +10576,7 @@ class ProjectMonitorApp:
                     info = Frame(card, bg=CARD_BG)
                     info.pack(side=LEFT, fill=X, expand=True)
                     Label(info, text=title, font=('Segoe UI', 12, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W)
-                    Label(info, text=f"?? {pname} • Contributor: {user}", font=('Segoe UI', 9), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(4, 0))
+                    Label(info, text=f"📂 {pname} • Contributor: {user}", font=('Segoe UI Emoji', 9), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(4, 0))
                     
                     actions = Frame(card, bg=CARD_BG)
                     actions.pack(side=RIGHT)
