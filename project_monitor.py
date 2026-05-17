@@ -4718,7 +4718,7 @@ class ProjectMonitorApp:
 
         total_tile, self.projects_total_chip = build_stat_tile(stat_row, "📊", ACCENT_BLUE, "Total Projects", "0")
         # total_tile.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 10))
-        ongoing_tile, self.projects_ongoing_chip = build_stat_tile(stat_row, "🏗️", ACCENT_GREEN, "Ongoing", "0")
+        ongoing_tile, self.projects_ongoing_chip = build_stat_tile(stat_row, "⚡", ACCENT_GREEN, "Ongoing", "0")
         # ongoing_tile.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 10))
         delayed_tile, self.projects_delayed_chip = build_stat_tile(stat_row, "⚠️", ACCENT_RED, "Delayed", "0")
         # delayed_tile.pack(side=LEFT, fill=BOTH, expand=True)
@@ -9667,7 +9667,7 @@ class ProjectMonitorApp:
 
         kpi_data = [
             ("👤 Total Employees", str(emp_summary.get('total_employees', 0)), ACCENT_BLUE),
-            ("🏗️ Active Projects", str(proj_stats.get('total_projects', 0)), ACCENT_GREEN),
+            ("📁 Active Projects", str(proj_stats.get('total_projects', 0)), ACCENT_GREEN),
             ("📊 Tasks Completed", f"{task_stats.get('completion_rate', 0)}%", ACCENT_ORANGE),
             ("⚡ Avg Productivity", f"{emp_summary.get('avg_productivity', 0)}", ACCENT_PURPLE)
         ]
