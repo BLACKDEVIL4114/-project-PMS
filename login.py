@@ -162,10 +162,8 @@ def run_login():
     x_cordinate = int((screen_width/2) - (window_width/2))
     y_cordinate = int((screen_height/2) - (window_height/2))
     login_window.geometry("{}x{}+{}+{}".format(window_width, window_height, x_cordinate, y_cordinate))
-    try:
-        login_window.state("zoomed")
-    except:
-        login_window.geometry("1280x800")
+    login_window.minsize(1100, 700)
+
     
     # Icon
     try:
@@ -314,6 +312,7 @@ def run_login():
         main_area.place_configure(relx=left_ratio, rely=0, relwidth=right_ratio, relheight=1.0)
 
     def draw_grid():
+        return  # Disabled grid pattern as requested by user
         w = main_area.winfo_width()
         h = main_area.winfo_height()
         last_w, last_h = state.get("last_grid_size", (0, 0))
@@ -843,7 +842,7 @@ def run_login():
         s.title(f"PMS 2.0 - {target_role} Registration")
         
         # Center the window on screen
-        win_w = 900
+        win_w = 1200
         win_h = 800
         scr_w = s.winfo_screenwidth()
         scr_h = s.winfo_screenheight()
@@ -853,22 +852,20 @@ def run_login():
         s.config(bg=BG_DARK) 
         s.resizable(True, True)
         
-        try:
-            s.state('zoomed')
-        except:
-            pass
-            
         main_canvas = Canvas(s, bg=BG_DARK, highlightthickness=0)
         v_scroll = ttk.Scrollbar(s, orient=VERTICAL, command=main_canvas.yview)
         
         scroll_frame = Frame(main_canvas, bg=BG_DARK)
         scroll_frame.bind("<Configure>", lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all")))
         
-        # Center the scroll_frame in the canvas with width 800
-        canvas_window = main_canvas.create_window((450, 0), window=scroll_frame, anchor="n", width=800)
+        # Center the scroll_frame in the canvas with width 1100
+        canvas_window = main_canvas.create_window((win_w/2, 0), window=scroll_frame, anchor="n", width=1100)
         
         def on_canvas_resize(e):
             main_canvas.coords(canvas_window, e.width / 2, 0)
+            # Make the card width dynamic (85% of window width, up to 1200px)
+            target_width = min(1200, int(e.width * 0.85))
+            main_canvas.itemconfig(canvas_window, width=target_width)
             
         main_canvas.bind("<Configure>", on_canvas_resize)
         main_canvas.configure(yscrollcommand=v_scroll.set)
@@ -877,7 +874,7 @@ def run_login():
         v_scroll.pack(side=RIGHT, fill=Y)
 
         card = Frame(scroll_frame, bg=CARD_BG, padx=30, pady=20, highlightbackground=BORDER_COLOR, highlightthickness=1)
-        card.pack(pady=20, padx=20, expand=True)
+        card.pack(pady=20, padx=20, fill=BOTH, expand=True)
         
         top_header = Frame(card, bg=CARD_BG)
         top_header.pack(fill=X, pady=(0, 15))
@@ -900,7 +897,7 @@ def run_login():
         Label(card, text="Fill in your details to get started with PMS 2.0", font=('Segoe UI', 11), bg=CARD_BG, fg="#9ca3af").pack(anchor=W, pady=(0, 20))
         
         form_frame = Frame(card, bg=CARD_BG)
-        form_frame.pack(fill=X)
+        form_frame.pack(fill=X, padx=150)
         form_frame.grid_columnconfigure(0, weight=1)
         form_frame.grid_columnconfigure(1, weight=1)
         
@@ -979,7 +976,7 @@ def run_login():
         reg_btn = Button(card, text="CREATE ACCOUNT", command=do_signup, 
                         bg=PRIMARY_RED, fg="white", font=('Segoe UI', 12, 'bold'), 
                         relief=FLAT, cursor="hand2", pady=15)
-        reg_btn.pack(fill=X)
+        reg_btn.pack(fill=X, padx=150)
         
         footer_frame = Frame(card, bg=CARD_BG)
         footer_frame.pack(pady=(15, 0))
