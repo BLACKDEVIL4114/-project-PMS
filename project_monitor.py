@@ -6572,10 +6572,61 @@ class ProjectMonitorApp:
         try:
             t = Toplevel(self.root)
             t.title(f"Project Details: {pname}")
-            t.geometry("900x700")
-            t.minsize(765, 595)
+            t.geometry("900x755")
+            t.minsize(765, 620)
             t.resizable(True, True)
             t.config(bg=CONTENT_BG)
+            
+            # Fetch initial project details
+            con = sqlite3.connect(get_db_path())
+            cur = con.cursor()
+            cur.execute("SELECT end_date, team_leader FROM projects WHERE id=?", (pid,))
+            p_row = cur.fetchone()
+            deadline = p_row[0] if p_row else "TBD"
+            team_leader = p_row[1] if p_row else ""
+            con.close()
+            
+            # --- Project Overview Summary Bar (Glassmorphic & Premium) ---
+            summary_bar = Frame(t, bg=CARD_BG, padx=20, pady=15, highlightbackground=BORDER_COLOR, highlightthickness=1)
+            summary_bar.pack(fill=X, padx=20, pady=(20, 0))
+            
+            # Left: Project Title & Team Info
+            left_info = Frame(summary_bar, bg=CARD_BG)
+            left_info.pack(side=LEFT, fill=Y)
+            
+            Label(left_info, text=pname, font=('Segoe UI', 16, 'bold'), bg=CARD_BG, fg=TEXT_WHITE).pack(anchor=W)
+            
+            # Local label references for dynamic real-time updates
+            modal_team_label = Label(left_info, text="👥 Team: Fetching...", font=('Segoe UI', 9), bg=CARD_BG, fg="#9aa3c2")
+            modal_team_label.pack(anchor=W, pady=(4, 0))
+            
+            # Right: Progress & Deadline Info
+            right_info = Frame(summary_bar, bg=CARD_BG)
+            right_info.pack(side=RIGHT, fill=Y)
+            
+            # Progress bar container
+            prog_frame = Frame(right_info, bg=CARD_BG)
+            prog_frame.pack(side=RIGHT, padx=(20, 0), fill=Y)
+            
+            prog_lbl_frame = Frame(prog_frame, bg=CARD_BG)
+            prog_lbl_frame.pack(fill=X)
+            Label(prog_lbl_frame, text="Progress", font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(side=LEFT)
+            
+            modal_prog_pct_lbl = Label(prog_lbl_frame, text="0%", font=('Segoe UI', 9, 'bold'), bg=CARD_BG, fg=ACCENT_GREEN)
+            modal_prog_pct_lbl.pack(side=RIGHT)
+            
+            # Custom Progress Track
+            track = Frame(prog_frame, bg="#1e2540", height=8, width=180)
+            track.pack(fill=X, pady=(4, 0))
+            track.pack_propagate(False)
+            
+            modal_prog_fill = Frame(track, bg=ACCENT_GREEN, height=8)
+            
+            # Deadline card
+            dl_frame = Frame(right_info, bg=CARD_BG, padx=15)
+            dl_frame.pack(side=RIGHT, fill=Y)
+            Label(dl_frame, text="📅 DEADLINE", font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(anchor=E)
+            Label(dl_frame, text=deadline or "TBD", font=('Segoe UI', 11, 'bold'), bg=CARD_BG, fg=ACCENT_RED).pack(anchor=E, pady=(2, 0))
             
             # Tabs for Tasks and Activity
             tab_control = ttk.Notebook(t)
@@ -6686,6 +6737,8 @@ class ProjectMonitorApp:
                 for i in tree.get_children(): tree.delete(i)
                 con = sqlite3.connect(get_db_path())
                 cur = con.cursor()
+                
+                # Fetch tasks for Treeview
                 cur.execute("""
                     SELECT
                         t.id,
@@ -6701,7 +6754,29 @@ class ProjectMonitorApp:
                 rows = cur.fetchall()
                 for row in rows:
                     tree.insert("", END, values=row)
+                    
+                # Recalculate progress dynamically
+                cur.execute("SELECT COUNT(*), SUM(CASE WHEN status='Completed' THEN 1 ELSE 0 END) FROM tasks WHERE project_id=?", (pid,))
+                t_res = cur.fetchone()
+                total, done = t_res[0] or 0, t_res[1] or 0
+                prog = int((done / total) * 100) if total > 0 else 0
+                
+                # Fetch unique list of assigned team members/employees
+                cur.execute("SELECT DISTINCT assigned_to FROM tasks WHERE project_id=? AND assigned_to IS NOT NULL AND assigned_to != ''", (pid,))
+                assigned_emps = [r[0] for r in cur.fetchall()]
+                if team_leader:
+                    for tl in [x.strip() for x in team_leader.split(",")]:
+                        if tl and tl not in assigned_emps:
+                            assigned_emps.append(tl)
+                team_str = ", ".join(assigned_emps) if assigned_emps else "Unassigned"
                 con.close()
+                
+                # Update overview elements dynamically in real-time
+                modal_team_label.config(text=f"👥 Team: {team_str}")
+                modal_prog_pct_lbl.config(text=f"{prog}%")
+                modal_prog_fill.place_forget()
+                if prog > 0:
+                    modal_prog_fill.place(x=0, y=0, relwidth=min(prog/100, 1.0))
             refresh_tree()
                 
             # --- Activity Timeline Content ---
