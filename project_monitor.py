@@ -3159,8 +3159,9 @@ class ProjectMonitorApp:
                 p_item.pack(fill=BOTH, expand=True, padx=(4, 0))
                 self._apply_hover_effect(p_item, _bar_col)
 
-                def open_proj(p=pid, n=pname):
+                def open_proj(_event=None, p=pid, n=pname):
                     self.show_project_tasks_modal(p, n)
+                    return "break"
 
                 # Info Row
                 info = Frame(p_item, bg=CARD_BG)
@@ -3198,10 +3199,10 @@ class ProjectMonitorApp:
                 if prog > 0:
                     bar_fill = Frame(bar_track, bg=_bar_col, height=5)
                     bar_fill.place(x=0, y=0, relwidth=min(prog / 100, 1.0))
-                    bar_fill.bind("<Button-1>", lambda e, p=pid, n=pname: open_proj(p, n))
+                    bar_fill.bind("<Button-1>", lambda e, p=pid, n=pname: open_proj(e, p, n))
 
                 for w in [row_wrap, p_item, info, l1, badge_frame, l2, sub, l3, bar_track]:
-                    w.bind("<Button-1>", lambda e, p=pid, n=pname: open_proj(p, n))
+                    w.bind("<Button-1>", lambda e, p=pid, n=pname: open_proj(e, p, n))
 
 
         # Right Column: Progress Overview + Quick Actions
@@ -6775,7 +6776,9 @@ class ProjectMonitorApp:
         row.bind("<Enter>", _on_e); row.bind("<Leave>", _on_l)
         
         # Click binding for the entire row to open details
-        def _open_details(e): self.show_project_tasks_modal(pid, name)
+        def _open_details(e):
+            self.show_project_tasks_modal(pid, name)
+            return "break"
         row.bind("<Button-1>", _open_details)
         for w in row.winfo_children():
             w.bind("<Button-1>", _open_details)
@@ -6784,12 +6787,37 @@ class ProjectMonitorApp:
 
     def show_project_tasks_modal(self, pid, pname):
         try:
+            if not hasattr(self, '_project_detail_windows'):
+                self._project_detail_windows = {}
+
+            existing = self._project_detail_windows.get(pid)
+            if existing is not None:
+                try:
+                    if existing.winfo_exists():
+                        existing.deiconify()
+                        existing.lift()
+                        existing.focus_force()
+                        return
+                except Exception:
+                    pass
+                self._project_detail_windows.pop(pid, None)
+
             t = Toplevel(self.root)
             t.title(f"Project Details: {pname}")
             t.geometry("900x755")
             t.minsize(765, 620)
             t.resizable(True, True)
             t.config(bg=CONTENT_BG)
+            self._project_detail_windows[pid] = t
+
+            def _on_close_project_modal():
+                self._project_detail_windows.pop(pid, None)
+                try:
+                    t.destroy()
+                except Exception:
+                    pass
+
+            t.protocol("WM_DELETE_WINDOW", _on_close_project_modal)
             
             # Fetch initial project details
             con = sqlite3.connect(get_db_path())
