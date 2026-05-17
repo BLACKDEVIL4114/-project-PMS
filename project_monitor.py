@@ -1038,11 +1038,17 @@ class ProjectMonitorApp:
             try:
                 if not canvas.winfo_exists():
                     return
-                # Windows uses delta/120, others might need different scaling
-                units = self._normalize_scroll_units(event.delta)
-                if units:
-                    # Scroll by 3 units for a snappier, premium desktop feel
-                    canvas.yview_scroll(-units * 3, "units")
+                # Touchpads/Trackpads generate high-frequency events with small deltas (< 120).
+                # Standard mouse wheels generate discrete events that are multiples of 120.
+                if abs(event.delta) >= 120:
+                    units = int(event.delta / 120)
+                    canvas.yview_scroll(-units * 3, "units") # Snappy 3-unit scroll for physical wheel clicks
+                else:
+                    # Silky-smooth precise trackpad swipe scrolling scaled proportionally
+                    step = int(event.delta / 10)
+                    if step == 0:
+                        step = 1 if event.delta > 0 else -1
+                    canvas.yview_scroll(-step, "units")
             except Exception:
                 pass
 
@@ -1053,9 +1059,14 @@ class ProjectMonitorApp:
             try:
                 if not canvas.winfo_exists():
                     return
-                units = self._normalize_scroll_units(event.delta)
-                if units:
+                if abs(event.delta) >= 120:
+                    units = int(event.delta / 120)
                     canvas.xview_scroll(-units * 3, "units")
+                else:
+                    step = int(event.delta / 10)
+                    if step == 0:
+                        step = 1 if event.delta > 0 else -1
+                    canvas.xview_scroll(-step, "units")
             except Exception:
                 pass
 
@@ -9166,6 +9177,7 @@ class ProjectMonitorApp:
         def _resize(e): canvas.itemconfig(canvas_win, width=e.width)
         canvas.bind("<Configure>", _resize)
         
+        self._bind_canvas_scrolling(scroll_f, canvas)
         # Right: Intelligence Dashboard
         right = Frame(paned, bg=CONTENT_BG)
         right.pack(side=LEFT, fill=BOTH, expand=True)
@@ -9275,6 +9287,8 @@ class ProjectMonitorApp:
             
             canvas.bind("<Configure>", lambda e: canvas.itemconfig(c_win, width=e.width))
             
+            self._bind_canvas_scrolling(main_f, canvas)
+            
             pad = Frame(scroll_f, bg=CONTENT_BG, padx=40, pady=40)
             pad.pack(fill=BOTH, expand=True)
             
@@ -9358,6 +9372,8 @@ class ProjectMonitorApp:
         
         def _resize(e): canvas.itemconfig(canvas_win, width=e.width)
         canvas.bind("<Configure>", _resize)
+        
+        self._bind_canvas_scrolling(wrapper, canvas)
 
         def create_intel_card(p, title, val, sub, color, icon="??"):
             f = Frame(p, bg=CARD_BG, padx=25, pady=25, highlightbackground=BORDER_COLOR, highlightthickness=1)
