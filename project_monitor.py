@@ -6413,16 +6413,38 @@ class ProjectMonitorApp:
                 card = Frame(parent, bg=CARD_BG, padx=22, pady=18, highlightbackground=BORDER_COLOR, highlightthickness=1)
                 card.pack(side=LEFT, padx=(0, 20), expand=True, fill=X)
                 
+                # Premium micro-interaction: active border glow on hover
+                def on_enter(e):
+                    card.config(highlightbackground=color, highlightthickness=1)
+                def on_leave(e):
+                    card.config(highlightbackground=BORDER_COLOR, highlightthickness=1)
+                
+                card.bind("<Enter>", on_enter)
+                card.bind("<Leave>", on_leave)
+                
                 top = Frame(card, bg=CARD_BG)
                 top.pack(fill=X)
-                Label(top, text=icon, font=('Segoe UI', 14), bg=CARD_BG).pack(side=LEFT)
-                Label(top, text=title, font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg=MUTED_TEXT).pack(side=LEFT, padx=10)
                 
-                Label(card, text=str(value), font=('Segoe UI', 24, 'bold'), bg=CARD_BG, fg=color).pack(anchor=W, pady=(12, 0))
+                # Fix: Add explicit high-contrast foreground color to icons so they are beautifully visible
+                icon_lbl = Label(top, text=icon, font=('Segoe UI', 14), bg=CARD_BG, fg=color)
+                icon_lbl.pack(side=LEFT)
                 
-                # Bottom indicator line
-                ind = Frame(card, bg=color, height=2)
+                # Brighter, high-fidelity title text
+                title_lbl = Label(top, text=title, font=('Segoe UI', 8, 'bold'), bg=CARD_BG, fg="#9aa3c2")
+                title_lbl.pack(side=LEFT, padx=10)
+                
+                # Premium large bold values
+                val_lbl = Label(card, text=str(value), font=('Segoe UI', 32, 'bold'), bg=CARD_BG, fg=color)
+                val_lbl.pack(anchor=W, pady=(12, 0))
+                
+                # Bottom accent indicator line
+                ind = Frame(card, bg=color, height=3)
                 ind.pack(fill=X, pady=(15, 0))
+                
+                # Propagate hover events across child elements
+                for w in [top, icon_lbl, title_lbl, val_lbl, ind]:
+                    w.bind("<Enter>", on_enter)
+                    w.bind("<Leave>", on_leave)
 
             render_stat_glass(metrics_row, "ACTIVE PROJECTS", stats.get("Ongoing", 0), ACCENT_BLUE, "📁")
             render_stat_glass(metrics_row, "DELIVERY RISKS", stats.get("Delayed", 0), ACCENT_RED, "⚠️")
