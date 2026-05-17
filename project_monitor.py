@@ -6161,12 +6161,20 @@ class ProjectMonitorApp:
             Label(team_f, text="Members currently assigned to your team.", 
                   font=('Segoe UI', 10), bg=HEADER_BG, fg=MUTED_TEXT).pack(anchor=W, pady=(2, 10))
             
+            tree_frame = Frame(team_f, bg=HEADER_BG)
+            tree_frame.pack(fill=BOTH, expand=True)
+            
             columns = ('Name', 'Department', 'Role')
-            tree = ttk.Treeview(team_f, columns=columns, show='headings', style='Treeview')
+            tree = ttk.Treeview(tree_frame, columns=columns, show='headings', style='Treeview')
+            scrollbar = ttk.Scrollbar(tree_frame, orient=VERTICAL, command=tree.yview)
+            tree.configure(yscrollcommand=scrollbar.set)
+            
             for col in columns:
                 tree.heading(col, text=col)
                 tree.column(col, width=150)
-            tree.pack(fill=BOTH, expand=True)
+                
+            tree.pack(side=LEFT, fill=BOTH, expand=True)
+            scrollbar.pack(side=RIGHT, fill=Y)
             
             try:
                 con = sqlite3.connect(get_db_path())
@@ -6177,6 +6185,60 @@ class ProjectMonitorApp:
                 con.close()
             except Exception as e:
                 print(f"Error loading team: {e}")
+                
+            # Function to remove the selected member from the team
+            def remove_member():
+                selected_item = tree.selection()
+                if not selected_item:
+                    messagebox.showwarning("No Selection", "Please select a team member from the list to remove.", parent=t)
+                    return
+                
+                item_values = tree.item(selected_item, 'values')
+                if not item_values:
+                    return
+                
+                name = item_values[0]
+                
+                if messagebox.askyesno("Confirm Removal", f"Are you sure you want to remove {name} from your team?", parent=t):
+                    try:
+                        con = sqlite3.connect(get_db_path())
+                        cur = con.cursor()
+                        cur.execute("UPDATE employee SET reporting_manager=NULL WHERE name=? AND reporting_manager=?", (name, CURRENT_USER_NAME))
+                        con.commit()
+                        con.close()
+                        
+                        tree.delete(selected_item)
+                        self.refresh_current_panel()
+                        self.refresh_members()
+                        
+                        # Refresh Fast Onboard unassigned employees list combobox
+                        try:
+                            con_ref = sqlite3.connect(get_db_path())
+                            cur_ref = con_ref.cursor()
+                            cur_ref.execute("SELECT name FROM employee WHERE (reporting_manager IS NULL OR reporting_manager = '') AND role NOT IN ('Team Leader', 'Project Manager', 'admin')")
+                            new_avail = [r[0] for r in cur_ref.fetchall()]
+                            con_ref.close()
+                            c_pick.config(values=new_avail)
+                            if new_avail:
+                                c_pick.set("--- Select Employee ---")
+                            else:
+                                c_pick.set("No unassigned employees found")
+                        except Exception as ex:
+                            print(f"Error reloading avail combobox: {ex}")
+                            
+                        messagebox.showinfo("Success", f"{name} has been removed from your team successfully.", parent=t)
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Failed to remove member: {e}", parent=t)
+                        
+            # Button Row below Treeview
+            btn_row = Frame(team_f, bg=HEADER_BG)
+            btn_row.pack(fill=X, pady=(15, 0))
+            
+            btn_remove = Button(btn_row, text="❌ REMOVE SELECTED MEMBER", font=('Segoe UI', 9, 'bold'),
+                                bg=ACCENT_RED, fg=WHITE, relief=FLAT, padx=20, pady=10, cursor='hand2',
+                                command=remove_member)
+            btn_remove.pack(side=RIGHT)
+            self._apply_hover_effect(btn_remove, ACCENT_RED, "#b91c1c")
 
         def save():
             try:
