@@ -1613,44 +1613,6 @@ class ProjectMonitorApp:
         else:
             self._complete_hot_reload(True, original_text)
 
-
-
-    def refresh_current_panel(self):
-        """Call the correct refresh for whichever panel/tab is currently active."""
-        try:
-            # Refresh projects list
-            if hasattr(self, 'load_projects'):
-                self.load_projects()
-            if hasattr(self, 'refresh_projects'):
-                self.refresh_projects()
-            # Refresh tasks list
-            if hasattr(self, 'load_tasks'):
-                self.load_tasks()
-            if hasattr(self, 'refresh_tasks'):
-                self.refresh_tasks()
-            # Refresh members/users list
-            if hasattr(self, 'load_members'):
-                self.load_members()
-            if hasattr(self, 'load_users'):
-                self.load_users()
-            if hasattr(self, 'refresh_members'):
-                self.refresh_members()
-            # Refresh teams list
-            if hasattr(self, 'load_teams'):
-                self.load_teams()
-            if hasattr(self, 'refresh_teams'):
-                self.refresh_teams()
-            # Refresh dashboard stats
-            if hasattr(self, 'load_dashboard'):
-                self.load_dashboard()
-            if hasattr(self, 'update_dashboard_stats'):
-                self.update_dashboard_stats()
-            if hasattr(self, 'refresh_dashboard'):
-                self.refresh_dashboard()
-            if getattr(self, 'current_page', '') == 'review_tasks':
-                self.load_review_tasks()
-        except Exception as e:
-            print(f"[refresh_current_panel] Error: {e}")
     def refresh_current_panel(self):
         """Call the correct refresh for whichever panel/tab is currently active."""
         try:
@@ -9821,37 +9783,6 @@ class ProjectMonitorApp:
             except Exception as e:
                 print(f"Failed to launch login: {e}")
 
-    def show_reset_requests(self, is_page=False):
-        if is_page:
-            # Clear Content Area
-            for widget in self.content_area.winfo_children():
-                widget.destroy()
-            t = self.content_area
-        else:
-            t = Toplevel(self.root)
-            t.title("Password Reset Requests")
-            t.geometry("800x600")
-            t.minsize(680, 510)  # FIX 7: prevent content clipping when UI changes
-            t.resizable(True, True)  # FIX 7: allow resize so no overflow
-            t.config(bg=CONTENT_BG)
-            # Center
-            x = int((self.root.winfo_screenwidth()/2) - (800/2))
-            y = int((self.root.winfo_screenheight()/2) - (600/2))
-            t.geometry(f"800x600+{x}+{y}")
-            
-        # 1. Title (Pack TOP)
-        Label(t, text="Pending Password Reset Requests", font=('Segoe UI', 18, 'bold'), bg=CONTENT_BG, fg=TEXT_WHITE).pack(side=TOP, pady=20)
-
-        # 2. Action Buttons Frame (MOVED TO TOP FOR VISIBILITY)
-        btn_frame = Frame(t, bg=CONTENT_BG)
-        btn_frame.pack(side=TOP, fill=X, padx=30, pady=10)
-        
-        # 3. Treeview Frame (Fill Remaining Space)
-        f = Frame(t, bg=CONTENT_BG)
-        f.pack(side=TOP, fill=BOTH, expand=True, padx=30, pady=(0, 20))
-        
-        cols = ("ID", "Email", "Role", "Mobile", "Date")
-        tree = ttk.Treeview(f, columns=cols, show='headings')
     def show_reset_requests(self):
         debug_log("DEBUG: Loading Security Access Hub...")
         for widget in self.content_area.winfo_children(): widget.destroy()
@@ -11413,18 +11344,21 @@ class ProjectMonitorApp:
             """, (CURRENT_USER_NAME,))
             active_team_leaders = [r[0] for r in cur.fetchall() if r[0]]
 
+            # Also capture the employee's reporting manager so we can show peers
+            # from the same delivery group when the active project is personal.
+            cur.execute("SELECT reporting_manager FROM employee WHERE lower(name) = lower(?)", (CURRENT_USER_NAME,))
+            mgr_row = cur.fetchone()
+            user_mgr = (mgr_row[0] or "").strip() if mgr_row else ""
+
             # Fallback to the employee's reporting team leader if they do not yet have project tasks.
-            if not active_team_leaders:
-                cur.execute("SELECT reporting_manager FROM employee WHERE lower(name) = lower(?)", (CURRENT_USER_NAME,))
-                mgr_row = cur.fetchone()
-                user_mgr = (mgr_row[0] or "").strip() if mgr_row else ""
-                if user_mgr:
-                    active_team_leaders = [user_mgr]
+            if not active_team_leaders and user_mgr:
+                active_team_leaders = [user_mgr]
 
             # 2. Fetch colleagues only from the same team-leader delivery stream.
-            colleagues = []
+            colleagues = set()
             if active_team_leaders:
-                placeholders = ','.join(['?'] * len(active_team_leaders))
+                normalized_team_leaders = [leader.strip().lower() for leader in active_team_leaders if leader and leader.strip()]
+                placeholders = ','.join(['?'] * len(normalized_team_leaders))
                 cur.execute(f"""
                     SELECT DISTINCT e.name
                     FROM employee e
@@ -11432,10 +11366,24 @@ class ProjectMonitorApp:
                     LEFT JOIN projects p ON p.id = t.project_id
                     WHERE lower(e.name) != lower(?)
                       AND lower(COALESCE(e.role, '')) NOT IN ('team leader', 'project manager', 'admin')
-                      AND TRIM(COALESCE(p.team_leader, '')) IN ({placeholders})
-                    ORDER BY e.name
-                """, [CURRENT_USER_NAME] + active_team_leaders)
-                colleagues = [r[0] for r in cur.fetchall()]
+                      AND lower(TRIM(COALESCE(p.team_leader, ''))) IN ({placeholders})
+                """, [CURRENT_USER_NAME] + normalized_team_leaders)
+                colleagues.update(r[0] for r in cur.fetchall() if r[0])
+
+            # Include peers under the same reporting manager so members on a
+            # personal onboarding project still see their real project group.
+            if user_mgr:
+                cur.execute("""
+                    SELECT DISTINCT name
+                    FROM employee
+                    WHERE lower(name) != lower(?)
+                      AND lower(COALESCE(role, '')) NOT IN ('team leader', 'project manager', 'admin')
+                      AND lower(TRIM(COALESCE(reporting_manager, ''))) = lower(TRIM(?))
+                    ORDER BY name
+                """, (CURRENT_USER_NAME, user_mgr))
+                colleagues.update(r[0] for r in cur.fetchall() if r[0])
+
+            colleagues = sorted(colleagues, key=lambda name: name.lower())
 
             # 3. FETCH TASKS FOR THESE COLLEAGUES
             team_data = []
