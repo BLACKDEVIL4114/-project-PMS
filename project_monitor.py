@@ -7935,11 +7935,31 @@ class ProjectMonitorApp:
             best_name = "N/A"
             
             for tl in tls:
-                cursor.execute("SELECT COUNT(*) FROM tasks WHERE assigned_to=?", (tl,))
+                cursor.execute("""
+                    SELECT COUNT(*) FROM tasks 
+                    WHERE project_id IN (
+                        SELECT id FROM projects 
+                        WHERE team_leader LIKE ?
+                    )
+                """, (f"%{tl}%",))
                 total = cursor.fetchone()[0] or 0
-                cursor.execute("SELECT COUNT(*) FROM tasks WHERE assigned_to=? AND status='Completed'", (tl,))
+                
+                cursor.execute("""
+                    SELECT COUNT(*) FROM tasks 
+                    WHERE status='Completed' AND project_id IN (
+                        SELECT id FROM projects 
+                        WHERE team_leader LIKE ?
+                    )
+                """, (f"%{tl}%",))
                 done = cursor.fetchone()[0] or 0
-                cursor.execute("SELECT COUNT(*) FROM tasks WHERE assigned_to=? AND status='Delayed'", (tl,))
+                
+                cursor.execute("""
+                    SELECT COUNT(*) FROM tasks 
+                    WHERE status='Delayed' AND project_id IN (
+                        SELECT id FROM projects 
+                        WHERE team_leader LIKE ?
+                    )
+                """, (f"%{tl}%",))
                 delayed = cursor.fetchone()[0] or 0
                 
                 rate = int((done/total)*100) if total > 0 else 0
@@ -8804,11 +8824,31 @@ class ProjectMonitorApp:
         try:
             con = sqlite3.connect(get_db_path())
             cur = con.cursor()
-            cur.execute("SELECT COUNT(*) FROM tasks WHERE assigned_to = ?", (tl,))
+            cur.execute("""
+                SELECT COUNT(*) FROM tasks 
+                WHERE project_id IN (
+                    SELECT id FROM projects 
+                    WHERE team_leader LIKE ?
+                )
+            """, (f"%{tl}%",))
             total = cur.fetchone()[0] or 0
-            cur.execute("SELECT COUNT(*) FROM tasks WHERE assigned_to = ? AND status = 'Completed'", (tl,))
+            
+            cur.execute("""
+                SELECT COUNT(*) FROM tasks 
+                WHERE status = 'Completed' AND project_id IN (
+                    SELECT id FROM projects 
+                    WHERE team_leader LIKE ?
+                )
+            """, (f"%{tl}%",))
             completed = cur.fetchone()[0] or 0
-            cur.execute("SELECT COUNT(*) FROM tasks WHERE assigned_to = ? AND status = 'Delayed'", (tl,))
+            
+            cur.execute("""
+                SELECT COUNT(*) FROM tasks 
+                WHERE status = 'Delayed' AND project_id IN (
+                    SELECT id FROM projects 
+                    WHERE team_leader LIKE ?
+                )
+            """, (f"%{tl}%",))
             delayed = cur.fetchone()[0] or 0
             pending = total - completed
             
@@ -8816,7 +8856,10 @@ class ProjectMonitorApp:
                 SELECT t.title, COALESCE(p.name, ''), t.status, COALESCE(t.due_date, 'N/A'), COALESCE(t.priority, 'N/A')
                 FROM tasks t
                 LEFT JOIN projects p ON t.project_id = p.id
-                WHERE t.assigned_to=?
+                WHERE t.project_id IN (
+                    SELECT id FROM projects 
+                    WHERE team_leader LIKE ?
+                )
                 ORDER BY
                     CASE t.status
                         WHEN 'Delayed' THEN 0
@@ -8826,7 +8869,7 @@ class ProjectMonitorApp:
                         ELSE 4
                     END,
                     COALESCE(t.due_date, '9999-12-31') ASC
-            """, (tl,))
+            """, (f"%{tl}%",))
             rows = cur.fetchall()
             con.close()
         except: pass
