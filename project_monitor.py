@@ -7797,7 +7797,22 @@ class ProjectMonitorApp:
             except Exception as e:
                 debug_log(f"DEBUG: Error fetching PM tasks: {e}")
                 
-            cur.execute("SELECT id, name FROM projects WHERE lower(team_leader) LIKE ?", (f"%{CURRENT_USER_NAME.lower()}%",))
+            cur.execute("""
+                SELECT id, name FROM projects 
+                WHERE lower(team_leader) LIKE ?
+                  AND (
+                      id IN (
+                          SELECT DISTINCT project_id FROM tasks 
+                          WHERE project_id IS NOT NULL 
+                            AND lower(assigned_to) = lower(?)
+                      )
+                      OR
+                      id NOT IN (
+                          SELECT DISTINCT project_id FROM tasks 
+                          WHERE project_id IS NOT NULL
+                      )
+                  )
+            """, (f"%{CURRENT_USER_NAME.lower()}%", CURRENT_USER_NAME))
             projects = cur.fetchall()
             cur.execute("SELECT name FROM employee WHERE reporting_manager = ? OR lower(role) IN ('team member', 'employee')", (CURRENT_USER_NAME,))
             members = [r[0] for r in cur.fetchall()]
