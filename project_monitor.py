@@ -5519,7 +5519,7 @@ class ProjectMonitorApp:
         cursor.execute("SELECT name, team_leader, start_date, end_date, description, status FROM projects WHERE id=?", (pid,))
         proj = cursor.fetchone()
         
-        cursor.execute("SELECT name FROM employee")
+        cursor.execute("SELECT name FROM employee WHERE lower(role)='team leader' ORDER BY name")
         employees = [r[0] for r in cursor.fetchall()]
         con.close()
         
