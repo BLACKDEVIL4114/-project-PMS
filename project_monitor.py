@@ -4477,7 +4477,16 @@ class ProjectMonitorApp:
                         con.close()
                         
                         win.destroy()
-                        self.refresh_emp_tasks_tab()
+                        
+                        # Real-time UI refresh based on current active sub-page
+                        if hasattr(self, 'current_page'):
+                            if self.current_page == 'emp_dashboard':
+                                self.load_emp_dashboard()
+                            elif self.current_page == 'emp_my_tasks':
+                                self.refresh_emp_tasks_tab()
+                        else:
+                            self.refresh_emp_tasks_tab()
+                            
                         messagebox.showinfo("Success", "Task status updated successfully!")
                     except Exception as e:
                         messagebox.showerror("Error", f"Failed to update task: {e}")
